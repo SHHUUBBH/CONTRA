@@ -1,0 +1,332 @@
+/* Custom Cursor Styles */
+.cursor-dot,
+.cursor-dot-outline {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 10010;
+  border-radius: 50%;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.3s ease-in-out, transform 0.3s ease-in-out;
+  will-change: transform, opacity;
+  mix-blend-mode: screen;
+}
+
+/* Global cursor hiding */
+body, 
+a, button, input, select, textarea,
+.nav-link, .btn, .logo, .mobile-nav-link,
+.tab-link, img, .image-card, .narrative-container,
+h1, h2, h3, h4, h5, h6, p, span, li, 
+[role="button"], [type="button"], [type="submit"],
+.generate-btn, .advanced-btn, .data-panel,
+.footer-links a, .social-link, [data-tab],
+.generate-form, .loading-container,
+[contenteditable], .viz-panel, .narrative-text,
+#particles-canvas, .cyber-grid, canvas, 
+.loader, .loader-wrapper, .particle-container {
+  cursor: none !important;
+}
+
+/* Special fix for iframes that might show system cursor */
+iframe {
+  pointer-events: auto;
+  cursor: none !important;
+}
+
+/* Ensure canvas elements can still be interacted with */
+canvas {
+  pointer-events: auto;
+}
+
+/* For iOS Safari compatibility */
+a, button, input[type="submit"], [role="button"] {
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+.cursor-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--color-purple);
+  box-shadow: 0 0 10px var(--color-purple), 0 0 20px rgba(139, 92, 246, 0.3);
+  transition: width 0.2s cubic-bezier(0.22, 1, 0.36, 1), 
+              height 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+              background-color 0.2s ease, 
+              filter 0.2s ease;
+  filter: blur(0px);
+}
+
+.cursor-dot-outline {
+  width: 40px;
+  height: 40px;
+  background: transparent;
+  border: 2px solid rgba(139, 92, 246, 0.5);
+  box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+  transition: width 0.3s cubic-bezier(0.16, 1, 0.3, 1), 
+              height 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+              border-width 0.3s ease, 
+              border-color 0.3s ease,
+              background-color 0.3s ease;
+}
+
+.cursor-active {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+  animation: cursorFadeIn 0.3s ease-out forwards;
+}
+
+@keyframes cursorFadeIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.cursor-clicking {
+  transform: translate(-50%, -50%) scale(0.9);
+}
+
+.cursor-dot.cursor-clicking {
+  transform: translate(-50%, -50%) scale(0.6);
+  background: rgba(139, 92, 246, 0.9);
+  filter: blur(1px);
+}
+
+.cursor-dot-outline.cursor-clicking {
+  transform: translate(-50%, -50%) scale(0.85);
+  border-color: rgba(139, 92, 246, 0.8);
+  background-color: rgba(139, 92, 246, 0.05);
+}
+
+.cursor-expand {
+  border-color: rgba(139, 92, 246, 0.7);
+  animation: pulseOutline 1.5s infinite alternate;
+}
+
+.cursor-dot.cursor-expand {
+  width: 12px;
+  height: 12px;
+  background: var(--color-purple);
+  filter: blur(0.5px);
+  animation: pulseDot 1.5s infinite alternate;
+}
+
+/* Link hover effect */
+.cursor-link {
+  width: 60px;
+  height: 60px;
+  border-width: 1px;
+  border-color: rgba(139, 92, 246, 0.8);
+  background-color: rgba(139, 92, 246, 0.05);
+}
+
+.cursor-dot.cursor-link {
+  width: 6px;
+  height: 6px;
+  background-color: var(--color-purple);
+  filter: blur(0px);
+}
+
+/* Button hover effect */
+.cursor-button {
+  width: 50px;
+  height: 50px;
+  border-width: 2px;
+  border-color: rgba(139, 92, 246, 0.9);
+  background-color: rgba(139, 92, 246, 0.1);
+}
+
+.cursor-dot.cursor-button {
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-purple);
+}
+
+/* Input hover effect */
+.cursor-input {
+  width: 20px;
+  height: 20px;
+  border-width: 1px;
+  border-color: rgba(139, 92, 246, 1);
+  transform: translate(-50%, -50%) scale(1) rotate(45deg);
+  border-radius: 2px;
+}
+
+.cursor-dot.cursor-input {
+  width: 4px;
+  height: 12px;
+  border-radius: 1px;
+  background-color: rgba(139, 92, 246, 1);
+}
+
+/* Image hover effect */
+.cursor-image {
+  width: 70px;
+  height: 70px;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(139, 92, 246, 0.1);
+  filter: blur(0.5px);
+}
+
+.cursor-dot.cursor-image {
+  width: 8px;
+  height: 8px;
+  background-color: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+}
+
+/* Text hover effect for better text selection */
+.cursor-text {
+  width: 15px;
+  height: 15px;
+  border-width: 1px;
+  border-radius: 2px;
+  border-color: rgba(139, 92, 246, 0.8);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.cursor-dot.cursor-text {
+  width: 3px;
+  height: 12px;
+  border-radius: 0;
+  background-color: rgba(139, 92, 246, 0.9);
+}
+
+/* Color-specific cursors based on tone */
+.tone-humorous .cursor-dot {
+  background-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color), 0 0 20px rgba(255, 107, 107, 0.3);
+}
+
+.tone-humorous .cursor-dot-outline {
+  border-color: rgba(255, 107, 107, 0.5);
+  box-shadow: 0 0 15px rgba(255, 107, 107, 0.3);
+}
+
+.tone-dramatic .cursor-dot {
+  background-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color), 0 0 20px rgba(128, 0, 0, 0.3);
+}
+
+.tone-dramatic .cursor-dot-outline {
+  border-color: rgba(196, 30, 58, 0.5);
+  box-shadow: 0 0 15px rgba(128, 0, 0, 0.3);
+}
+
+.tone-poetic .cursor-dot {
+  background-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color), 0 0 20px rgba(147, 112, 219, 0.3);
+}
+
+.tone-poetic .cursor-dot-outline {
+  border-color: rgba(147, 112, 219, 0.5);
+  box-shadow: 0 0 15px rgba(147, 112, 219, 0.3);
+}
+
+.tone-technical .cursor-dot {
+  background-color: var(--primary-color);
+  box-shadow: 0 0 10px var(--primary-color), 0 0 20px rgba(0, 180, 216, 0.3);
+}
+
+.tone-technical .cursor-dot-outline {
+  border-color: rgba(0, 180, 216, 0.5);
+  box-shadow: 0 0 15px rgba(0, 180, 216, 0.3);
+}
+
+/* Animation keyframes */
+@keyframes pulseOutline {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.3);
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.05);
+    box-shadow: 0 0 0 10px rgba(139, 92, 246, 0);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+@keyframes pulseDot {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0.5);
+  }
+  70% {
+    transform: translate(-50%, -50%) scale(1.1);
+    box-shadow: 0 0 0 7px rgba(139, 92, 246, 0);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+    box-shadow: 0 0 0 0 rgba(139, 92, 246, 0);
+  }
+}
+
+/* Trail effect (optional) */
+.cursor-trail {
+  position: fixed;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: rgba(139, 92, 246, 0.3);
+  pointer-events: none;
+  z-index: 9998;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+  animation: trailFade 0.8s linear forwards;
+}
+
+@keyframes trailFade {
+  0% {
+    opacity: 0.7;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+}
+
+/* Media query to disable custom cursor on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .cursor-dot,
+  .cursor-dot-outline,
+  .cursor-trail {
+    display: none;
+  }
+  
+  /* Restore normal cursors on mobile devices */
+  body, 
+  a, button, input, select, textarea,
+  .nav-link, .btn, .logo, .mobile-nav-link,
+  .tab-link, img, .image-card, .narrative-container,
+  h1, h2, h3, h4, h5, h6, p, span, li, 
+  [role="button"], [type="button"], [type="submit"],
+  .generate-btn, .advanced-btn, .data-panel,
+  .footer-links a, .social-link, [data-tab],
+  .generate-form, .loading-container,
+  [contenteditable], .viz-panel, .narrative-text {
+    cursor: auto !important;
+  }
+  
+  /* Restore appropriate special cursors */
+  a, button, .btn, .nav-link, .logo, 
+  [role="button"], [type="button"], [type="submit"] {
+    cursor: pointer !important;
+  }
+  
+  input[type="text"], textarea, [contenteditable] {
+    cursor: text !important;
+  }
+} 

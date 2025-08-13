@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CONTRA: Data-Driven Art Generator & Visual Storytelling</title>
+    
+    <!-- Add Plotly.js library with specific version -->
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    
+    <!-- Link to CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom-cursor.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Add D3.js for visualizations -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Add GSAP for animations -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="{{ url_for('static', filename='img/icons/favicon-icon.svg') }}" type="image/svg+xml">
+    <!-- Fallback favicon for browsers that don't support SVG -->
+    <link rel="alternate icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
+    
+    <!-- Add custom style to ensure the visualization tab is visible -->
+    <style>
+        .result-nav ul li {
+            display: block !important;
+        }
+        .tab-link[data-tab="visualizations"] {
+            display: inline-block !important;
+        }
+        #visualizations-tab {
+            display: block;
+        }
+        #visualizations-tab.active {
+            display: block !important;
+        }
+    </style>
+</head>
+<body>
+    <!-- Loader -->
+    <div class="loader-wrapper">
+        <div class="loader">
+            <div class="loader-inner"></div>
+            <div class="loader-inner"></div>
+            <div class="loader-inner"></div>
+        </div>
+    </div>
+
+    <!-- Cyber Grid Background -->
+    <div class="cyber-grid"></div>
+
+    <!-- Custom Cursor -->
+    <div class="cursor-dot"></div>
+    <div class="cursor-dot-outline"></div>
+
+    <!-- Particles Background -->
+    <canvas id="particles-canvas"></canvas>
+
+    <header class="navbar">
+        <div class="container">
+            <div class="navbar-content">
+                <a href="/" class="logo" data-text="CONTRA">CONTRA</a>
+                <nav class="desktop-nav">
+                    <a href="/" class="nav-link">HOME<span></span></a>
+                    <a href="/about" target="_self" class="nav-link">ABOUT<span></span></a>
+                    <a href="/status" target="_self" class="nav-link">STATUS<span></span></a>
+                </nav>
+                <button class="mobile-menu-toggle" aria-label="Toggle menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Mobile Navigation -->
+    <div class="mobile-nav">
+        <div class="mobile-nav-content">
+            <a href="/" class="mobile-nav-link">HOME</a>
+            <a href="/about" target="_self" class="mobile-nav-link">ABOUT</a>
+            <a href="/status" target="_self" class="mobile-nav-link">STATUS</a>
+        </div>
+    </div>
+
+    <main>
+        <section class="app-intro">
+            <div class="container">
+                <div class="intro-content">
+                    <h2 class="app-title reveal-text">CONTRA</h2>
+                    <p class="app-description reveal-text">Data-Driven Art Generator & Visual Storytelling Platform</p>
+                </div>
+            </div>
+        </section>
+        
+        <section class="input-section">
+            <div class="container">
+                <h2 class="section-title reveal-text">Generate Your Experience</h2>
+                <form id="generate-form" class="animate-on-scroll">
+                    <div class="form-group">
+                        <label for="topic">Enter a topic to explore</label>
+                        <input type="text" id="topic" name="topic" placeholder="Enter a topic (e.g., Quantum Physics, Renaissance Art)" required>
+                    </div>
+                    
+                    <div class="options-row">
+                        <div class="form-group">
+                            <label for="tone">Narrative Tone</label>
+                            <select id="tone" name="tone">
+                                <option value="informative">Informative</option>
+                                <option value="dramatic">Dramatic</option>
+                                <option value="poetic">Poetic</option>
+                                <option value="humorous">Humorous</option>
+                                <option value="technical">Technical</option>
+                                <option value="simple">Simple</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="expertise_level">Expertise Level <span class="info-icon" id="level-info">?</span></label>
+                            <select id="expertise_level" name="expertise_level">
+                                <option value="beginner">Beginner</option>
+                                <option value="intermediate" selected>Intermediate</option>
+                                <option value="advanced">Advanced</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="variants">Image Variants</label>
+                            <div class="range-control">
+                                <input type="range" id="variants" name="variants" min="1" max="5" value="1">
+                                <span id="variants-value" class="range-value">1</span>
+                            </div>
+                            <div class="range-ticks">
+                                <span>1</span>
+                                <span>2</span>
+                                <span>3</span>
+                                <span>4</span>
+                                <span>5</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div id="level-description" class="level-description">
+                        <div class="level-description-content">
+                            <h4>Intermediate Level</h4>
+                            <p>Content will use moderately advanced vocabulary and concepts, suitable for high school/undergraduate students or those with some familiarity with the topic.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" id="generate-btn" class="btn btn-primary">
+                            <span class="btn-text">Generate</span>
+                            <span class="icon-container">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon">
+                                    <path d="M5 12h14"></path>
+                                    <path d="m12 5 7 7-7 7"></path>
+                                </svg>
+                            </span>
+                        </button>
+                        <button type="button" id="advanced-btn" class="btn btn-secondary">
+                            <span class="btn-text">Advanced Options</span>
+                            <span class="icon-container">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+                            </span>
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="advanced-options" class="hidden">
+                    <h3>Advanced Options</h3>
+                    <div class="options-row">
+                        <div class="form-group">
+                            <label for="max_length">Max Length</label>
+                            <input type="number" id="max_length" name="max_length" min="256" max="4096" value="1024">
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="temperature">Creativity (Temperature)</label>
+                            <div class="range-control">
+                                <input type="range" id="temperature" name="temperature" min="0.1" max="1.0" step="0.1" value="0.7">
+                                <span id="temperature-value" class="range-value">0.7</span>
+                            </div>
+                            <div class="range-labels">
+                                <span>Conservative</span>
+                                <span>Creative</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section id="loading" class="hidden">
+            <div class="loading-spinner"></div>
+            <p>Generating your experience...</p>
+        </section>
+        
+        <section id="results" class="hidden">
+            <div class="container">
+                <div class="result-nav">
+                    <ul>
+                        <li><a href="#narrative-tab" class="tab-link active" data-tab="narrative">Narrative</a></li>
+                        <li><a href="#images-tab" class="tab-link" data-tab="images">Images</a></li>
+                        <!-- <li><a href="#visualizations-tab" class="tab-link" data-tab="visualizations">Visualizations</a></li> -->
+                        <li><a href="#conversation-tab" class="tab-link" data-tab="conversation">Conversation</a></li>
+                        <li><a href="#data-tab" class="tab-link" data-tab="data">Data</a></li>
+                    </ul>
+                </div>
+                
+                <div id="narrative-tab" class="tab-content active">
+                    <div class="narrative-container">
+                        <h2 id="topic-heading"></h2>
+                        <div class="bullets-container" id="bullets-container"></div>
+                        <div class="narrative-text" id="narrative-text"></div>
+                    </div>
+                </div>
+                
+                <div id="images-tab" class="tab-content">
+                    <div class="images-container" id="images-container"></div>
+                    <div class="image-prompt" id="image-prompt"></div>
+                </div>
+                
+                <!-- <div id="visualizations-tab" class="tab-content">
+                    <div class="viz-container">
+                        <div class="viz-panel">
+                            <h3>Timeline: Battle of Haldighati</h3>
+                            <div class="viz-fullscreen-wrapper">
+                                <div class="viz-fullscreen-btn" title="View Fullscreen">
+                                    <i class="fas fa-expand"></i>
+                                </div>
+                                <div class="viz-timeline" id="timeline-viz"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="viz-panel">
+                            <h3>Categories: Battle of Haldighati</h3>
+                            <div class="viz-fullscreen-wrapper">
+                                <div class="viz-fullscreen-btn" title="View Fullscreen">
+                                    <i class="fas fa-expand"></i>
+                                </div>
+                                <div class="viz-categories" id="categories-viz"></div>
+                            </div>
+                        </div>
+                        
+                        <div class="viz-panel">
+                            <h3>Concept Map: Battle of Haldighati</h3>
+                            <div class="viz-fullscreen-wrapper">
+                                <div class="viz-fullscreen-btn" title="View Fullscreen">
+                                    <i class="fas fa-expand"></i>
+                                </div>
+                                <div class="viz-concept-map" id="concept-map-viz"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div> -->
+                
+                <div id="conversation-tab" class="tab-content">
+                    <div class="conversation-container">
+                        <div class="conversation-header">
+                            <h3>Ask Questions About <span id="conversation-topic"></span></h3>
+                            <p class="conversation-hint">Ask for elaboration, explanations, or related information.</p>
+                        </div>
+                        <div class="chat-history" id="chat-history">
+                            <div class="system-message">
+                                <p>I'm your CONTRA AI assistant. Ask me anything about this topic for more information or explanations.</p>
+                            </div>
+                        </div>
+                        <div class="chat-input-container">
+                            <textarea id="chat-input" placeholder="Ask a question about this topic..." rows="2"></textarea>
+                            <button id="chat-submit" type="button" class="btn btn-primary">Send</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="data-tab" class="tab-content">
+                    <div class="data-sources">
+                        <div class="data-panel">
+                            <h3>Wikipedia</h3>
+                            <div id="wikipedia-data"></div>
+                        </div>
+                        <div class="data-panel">
+                            <h3>News Headlines</h3>
+                            <div id="news-data"></div>
+                        </div>
+                        <div class="data-panel">
+                            <h3>DBpedia Categories</h3>
+                            <div id="dbpedia-data"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <footer class="footer">
+        <div class="footer-background"></div>
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-main">
+                    <div class="footer-logo" id="footer-logo">
+                        <span class="logo" data-text="CONTRA">CONTRA</span>
+                        <p>Data-Driven Art Generator & Visual Storytelling Platform</p>
+                    </div>
+                    <div class="footer-links">
+                        <div class="footer-links-column">
+                            <h4>Navigation</h4>
+                            <ul>
+                                <li><a href="/">Home</a></li>
+                                <li><a href="/about">About</a></li>
+                                <li><a href="/status">Status</a></li>
+                            </ul>
+                        </div>
+                        <div class="footer-links-column">
+                            <h4>Resources</h4>
+                            <ul>
+                                <li><a href="#">Documentation</a></li>
+                                <li><a href="#">API</a></li>
+                                <li><a href="#">Support</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="social-links">
+                        <a href="https://github.com/yourusername/contra" target="_blank" class="social-link">
+                            <i class="fab fa-github"></i>
+                        </a>
+                        <a href="#" target="_blank" class="social-link">
+                            <i class="fab fa-twitter"></i>
+                        </a>
+                        <a href="#" target="_blank" class="social-link">
+                            <i class="fab fa-linkedin"></i>
+                        </a>
+                    </div>
+                </div>
+                <div class="footer-bottom">
+                    <p class="copyright">&copy; 2024 CONTRA - All rights reserved</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="{{ url_for('static', filename='js/particles.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/holographic-sphere.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
+    <script>
+        // Add custom cursor functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const cursorDot = document.querySelector('.cursor-dot');
+            const cursorOutline = document.querySelector('.cursor-dot-outline');
+            
+            if (!cursorDot || !cursorOutline) return;
+            
+            window.addEventListener('mousemove', function(e) {
+                cursorDot.style.opacity = '1';
+                cursorOutline.style.opacity = '1';
+                
+                cursorDot.style.left = e.clientX + 'px';
+                cursorDot.style.top = e.clientY + 'px';
+                
+                cursorOutline.style.left = e.clientX + 'px';
+                cursorOutline.style.top = e.clientY + 'px';
+            });
+            
+            document.addEventListener('mousedown', function() {
+                cursorDot.classList.add('cursor-expand');
+                cursorOutline.classList.add('cursor-active');
+            });
+            
+            document.addEventListener('mouseup', function() {
+                cursorDot.classList.remove('cursor-expand');
+                cursorOutline.classList.remove('cursor-active');
+            });
+            
+            // Hide cursor when mouse leaves window
+            document.addEventListener('mouseleave', function() {
+                cursorDot.style.opacity = '0';
+                cursorOutline.style.opacity = '0';
+            });
+            
+            // Custom hover effects for links and buttons
+            const links = document.querySelectorAll('a, button, input, textarea, select');
+            links.forEach(link => {
+                link.addEventListener('mouseover', () => {
+                    cursorDot.classList.add('cursor-expand');
+                    cursorOutline.classList.add('cursor-active');
+                });
+                
+                link.addEventListener('mouseleave', () => {
+                    cursorDot.classList.remove('cursor-expand');
+                    cursorOutline.classList.remove('cursor-active');
+                });
+            });
+        });
+        
+        // Mobile menu toggle
+        document.addEventListener('DOMContentLoaded', function() {
+            const menuToggle = document.querySelector('.mobile-menu-toggle');
+            const mobileNav = document.querySelector('.mobile-nav');
+            
+            if (!menuToggle || !mobileNav) return;
+            
+            menuToggle.addEventListener('click', function() {
+                // Toggle active class on menu button
+                this.classList.toggle('active');
+                
+                // Add animation to the hamburger icon bars
+                const bars = this.querySelectorAll('span');
+                if (this.classList.contains('active')) {
+                    bars[0].style.transform = 'translateY(9px) rotate(45deg)';
+                    bars[1].style.opacity = '0';
+                    bars[2].style.transform = 'translateY(-9px) rotate(-45deg)';
+                } else {
+                    bars[0].style.transform = 'none';
+                    bars[1].style.opacity = '1';
+                    bars[2].style.transform = 'none';
+                }
+                
+                // Toggle mobile navigation
+                mobileNav.classList.toggle('active');
+                
+                // Prevent scrolling when menu is open
+                document.body.style.overflow = mobileNav.classList.contains('active') ? 'hidden' : '';
+            });
+            
+            // Close mobile menu when clicking on a mobile nav link
+            const mobileNavLinks = document.querySelectorAll('.mobile-nav-link');
+            mobileNavLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    menuToggle.classList.remove('active');
+                    mobileNav.classList.remove('active');
+                    document.body.style.overflow = '';
+                    
+                    // Reset hamburger icon
+                    const bars = menuToggle.querySelectorAll('span');
+                    bars[0].style.transform = 'none';
+                    bars[1].style.opacity = '1';
+                    bars[2].style.transform = 'none';
+                });
+            });
+        });
+        
+        // Loader
+        window.addEventListener('load', function() {
+            const loader = document.querySelector('.loader-wrapper');
+            if (loader) {
+                setTimeout(() => {
+                    loader.classList.add('loader-disappear');
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html> 

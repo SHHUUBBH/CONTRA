@@ -1,0 +1,12 @@
+<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <pattern id="technical-pattern" x="0" y="0" width="50" height="50" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="50" height="50" fill="none" stroke="#00B4D8" stroke-width="0.5" opacity="0.1" />
+      <circle cx="25" cy="25" r="1" fill="#0077B6" opacity="0.2" />
+      <path d="M10,10 L15,10 L15,15 L10,15 Z" fill="#03045E" opacity="0.15" />
+      <path d="M35,35 L40,35 L40,40 L35,40 Z" fill="#00B4D8" opacity="0.15" />
+      <path d="M0,0 L5,5 M45,45 L50,50" stroke="#0077B6" stroke-width="0.5" opacity="0.1" />
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#technical-pattern)" />
+</svg> 

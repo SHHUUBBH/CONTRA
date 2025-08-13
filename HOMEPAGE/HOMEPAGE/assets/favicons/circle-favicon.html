@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Circular Favicon Generator</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="faviconCanvas" width="32" height="32"></canvas>
+
+  <script>
+    window.onload = function() {
+      const canvas = document.getElementById('faviconCanvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = function() {
+        // Clear canvas
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Create circular clipping path
+        ctx.beginPath();
+        ctx.arc(canvas.width/2, canvas.height/2, canvas.width/2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+        
+        // Draw image
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        // Optional: Add a subtle border
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        
+        // Convert to data URL and download
+        const dataURL = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = 'circular-favicon.png';
+        link.href = dataURL;
+        link.click();
+      };
+      
+      img.src = '../Images/contra.png';
+    };
+  </script>
+</body>
+</html> 

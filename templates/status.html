@@ -1,0 +1,128 @@
+{% extends "layout.html" %}
+
+{% block title %}CONTRA - System Status{% endblock %}
+
+{% block content %}
+    <section class="app-intro">
+        <div class="container intro-content">
+            <h1 class="hero-title reveal-text">System Status</h1>
+            <p class="hero-description reveal-text">Check the operational status of all CONTRA services</p>
+        </div>
+    </section>
+
+    <section class="container">
+        <div class="status-container">
+            <div class="status-summary">
+                <div class="status-overview">
+                    <div class="overall-status-display">
+                        <div class="status-label">System Status</div>
+                        <div class="status-badge status-{{ status }}">{{ status }}</div>
+                    </div>
+                    <button id="refresh-btn" class="status-refresh-btn">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh Status
+                    </button>
+                </div>
+                
+                <div class="status-metrics">
+                    <div class="metric-card">
+                        <div class="metric-value">{{ summary.total }}</div>
+                        <div class="metric-label">Total Services</div>
+                    </div>
+                    <div class="metric-card operational">
+                        <div class="metric-value">{{ summary.ok }}</div>
+                        <div class="metric-label">Operational</div>
+                    </div>
+                    <div class="metric-card error">
+                        <div class="metric-value">{{ summary.error }}</div>
+                        <div class="metric-label">Error</div>
+                    </div>
+                    <div class="metric-card warning">
+                        <div class="metric-value">{{ summary.missing }}</div>
+                        <div class="metric-label">Missing</div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="status-section">
+                <h2 class="section-title">API Services</h2>
+                <div class="status-content">
+                    <div class="service-list">
+                        {% for service in apis %}
+                        <div class="service-item status-{{ service.status }}">
+                            <div class="service-details">
+                                <div class="service-name">{{ service.name }}</div>
+                                <div class="service-message">{{ service.message }}</div>
+                            </div>
+                            <div class="service-status-indicator">
+                                <div class="status-icon status-{{ service.status }}"></div>
+                                <div class="status-text">{{ service.status }}</div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="status-section">
+                <h2 class="section-title">Configuration Guide</h2>
+                <div class="status-content">
+                    <div class="config-guide">
+                        <div class="config-intro">
+                            <p>To ensure all features work correctly, make sure you have properly configured your API keys in the <code>.env</code> file:</p>
+                        </div>
+                        
+                        <div class="config-steps">
+                            <div class="config-step">
+                                <div class="step-number">1</div>
+                                <div class="step-content">
+                                    <h3>Groq LLaMA API</h3>
+                                    <div class="config-instruction">
+                                        <code>GROQ_API_KEY=your_api_key_here</code>
+                                        <p>Required for narrative generation using advanced AI language models</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="config-step">
+                                <div class="step-number">2</div>
+                                <div class="step-content">
+                                    <h3>Stability AI</h3>
+                                    <div class="config-instruction">
+                                        <code>STABILITY_API_KEY=your_api_key_here</code>
+                                        <p>Required for image generation using Stable Diffusion</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="config-step">
+                                <div class="step-number">3</div>
+                                <div class="step-content">
+                                    <h3>News API</h3>
+                                    <div class="config-instruction">
+                                        <code>NEWS_API_KEY=your_api_key_here</code>
+                                        <p>Required for fetching current news about your topics</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="config-note">
+                            <p>After updating your configuration, restart the application to apply changes.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %}
+
+{% block scripts %}
+    <script>
+        document.getElementById('refresh-btn').addEventListener('click', function() {
+            window.location.reload();
+        });
+    </script>
+{% endblock %} 

@@ -1,0 +1,117 @@
+{% extends "layout.html" %}
+
+{% block title %}About CONTRA - Data-Driven Art Generator{% endblock %}
+
+{% block content %}
+    <section class="app-intro">
+        <div class="container intro-content">
+            <h1 class="hero-title reveal-text">About CONTRA</h1>
+            <p class="hero-description reveal-text">A powerful Data-Driven Art Generator & Visual Storytelling Platform</p>
+        </div>
+    </section>
+
+    <section class="container">
+        <div class="about-container">
+            <div class="about-section">
+                <h2 class="section-title">What is CONTRA?</h2>
+                <div class="about-content">
+                    <p>CONTRA transforms simple user prompts into immersive digital experiences by integrating:</p>
+                    
+                    <div class="feature-grid">
+                        <div class="feature-card">
+                            <div class="feature-icon">🎨</div>
+                            <h3>AI-generated Art</h3>
+                            <p>Beautiful imagery via the Stable Diffusion API</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📝</div>
+                            <h3>Narrative Synthesis</h3>
+                            <p>Engaging storytelling via the Groq LLaMA API</p>
+                        </div>
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Data Visualizations</h3>
+                            <p>Interactive visuals powered by Plotly</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="about-section">
+                <h2 class="section-title">How It Works</h2>
+                <div class="about-content">
+                    <p>CONTRA works by enriching user inputs with contextual data from multiple sources:</p>
+                    
+                    <div class="process-steps">
+                        <div class="process-step">
+                            <div class="step-number">1</div>
+                            <div class="step-content">
+                                <h3>Data Collection</h3>
+                                <p>Gathers information from Wikipedia, DBpedia, and current news sources.</p>
+                            </div>
+                        </div>
+                        <div class="process-step">
+                            <div class="step-number">2</div>
+                            <div class="step-content">
+                                <h3>Narrative Generation</h3>
+                                <p>Creates engaging narratives using the LLaMA language model.</p>
+                            </div>
+                        </div>
+                        <div class="process-step">
+                            <div class="step-number">3</div>
+                            <div class="step-content">
+                                <h3>Image Creation</h3>
+                                <p>Generates visually stunning imagery using Stable Diffusion.</p>
+                            </div>
+                        </div>
+                        <div class="process-step">
+                            <div class="step-number">4</div>
+                            <div class="step-content">
+                                <h3>Visualization</h3>
+                                <p>Produces interactive data visualizations to enhance understanding.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="about-section">
+                <h2 class="section-title">Technologies</h2>
+                <div class="about-content">
+                    <div class="tech-grid">
+                        <div class="tech-category">
+                            <h3>Backend</h3>
+                            <div class="tech-items">
+                                <div class="tech-item">Python Flask</div>
+                                <div class="tech-item">Modular Architecture</div>
+                            </div>
+                        </div>
+                        <div class="tech-category">
+                            <h3>Data Sources</h3>
+                            <div class="tech-items">
+                                <div class="tech-item">Wikipedia</div>
+                                <div class="tech-item">DBpedia</div>
+                                <div class="tech-item">GNews</div>
+                            </div>
+                        </div>
+                        <div class="tech-category">
+                            <h3>AI Models</h3>
+                            <div class="tech-items">
+                                <div class="tech-item">Groq LLaMA API</div>
+                                <div class="tech-item">Stable Diffusion</div>
+                            </div>
+                        </div>
+                        <div class="tech-category">
+                            <h3>Frontend</h3>
+                            <div class="tech-items">
+                                <div class="tech-item">HTML5 & CSS3</div>
+                                <div class="tech-item">JavaScript</div>
+                                <div class="tech-item">Plotly</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+{% endblock %} 

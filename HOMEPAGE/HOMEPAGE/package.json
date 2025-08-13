@@ -1,0 +1,13 @@
+{
+  "name": "contra-frontend",
+  "version": "1.0.0",
+  "description": "Frontend for CONTRA project",
+  "scripts": {
+    "build": "echo 'No build step required'"
+  },
+  "dependencies": {
+    "gsap": "^3.12.2"
+  },
+  "author": "Subhro Pal, Yuvraj Singh Kushwah",
+  "license": "MIT"
+}
