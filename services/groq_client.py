@@ -8,9 +8,29 @@ import requests
 import json
 from typing import Dict, List, Any, Optional, Tuple
 
-from config import APIConfig
-from utils.cache import disk_cache
-from utils.helpers import format_time_elapsed
+try:
+    from config import APIConfig
+except ImportError:
+    # Fallback config if imports fail
+    class APIConfig:
+        GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
+        GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+
+try:
+    from utils.cache import disk_cache
+except ImportError:
+    # Fallback decorator if cache is not available
+    def disk_cache(subdir=''):
+        def decorator(func):
+            return func
+        return decorator
+
+try:
+    from utils.helpers import format_time_elapsed
+except ImportError:
+    # Fallback helper if not available
+    def format_time_elapsed(seconds):
+        return f"{seconds:.2f}s"
 
 # Configure logging
 logger = logging.getLogger(__name__)

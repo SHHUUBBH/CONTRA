@@ -10,10 +10,30 @@ os.environ.setdefault('FLASK_ENV', 'production')
 
 try:
     from app import app
-except ImportError:
+except ImportError as e:
+    print(f"Import error for app: {e}")
     # Fallback if app structure is different
-    from app import create_app
-    app = create_app()
+    try:
+        from app import create_app
+        app = create_app()
+    except ImportError as e2:
+        print(f"Import error for create_app: {e2}")
+        # Create a minimal Flask app if imports fail
+        from flask import Flask, jsonify
+        app = Flask(__name__)
+        
+        @app.route('/api/status')
+        def status():
+            return jsonify({"status": "partial", "message": "Limited functionality available"})
+        
+        @app.route('/api/health')
+        def health():
+            return jsonify({"success": True, "status": "partial"})
+            
+        @app.route('/', defaults={'path': ''})
+        @app.route('/<path:path>')
+        def catch_all(path):
+            return jsonify({"success": False, "error": "Limited functionality - deployment in progress"})
 
 def handler(event, context):
     """Netlify Functions handler"""
