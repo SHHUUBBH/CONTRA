@@ -14,10 +14,10 @@ def create_env_file():
     
     env_content = """# CONTRA Environment Variables
 
-# API Keys
+# API Keys - Replace with your actual API keys
 GROQ_API_KEY=your_groq_api_key_here
 NEWS_API_KEY=your_news_api_key_here
-STABILITY_API_KEY=
+STABILITY_API_KEY=your_stability_api_key_here
 
 # Flask Configuration
 FLASK_ENV=development

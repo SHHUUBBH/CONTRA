@@ -31,14 +31,14 @@ DATA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 class APIConfig:
     """API configuration settings"""
     # Groq LLaMA API
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "your_groq_api_key_here")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
     
     # Stable Diffusion
     SD_MODEL_VERSION = os.getenv("SD_MODEL_VERSION", "stable-diffusion-3.5-large")
     STABILITY_API_KEY = os.getenv("STABILITY_API_KEY", "")
     # News API
-    NEWS_API_KEY = os.getenv("NEWS_API_KEY", "your_news_api_key_here")
+    NEWS_API_KEY = os.getenv("NEWS_API_KEY", "")
 
 # Flask application settings
 class FlaskConfig:
