@@ -1,5 +1,5 @@
 [build]
-  command = "cd HOMEPAGE/HOMEPAGE && npm install && pip install -r ../../requirements.txt"
+  command = "bash build.sh"
   publish = "HOMEPAGE/HOMEPAGE"
   functions = "netlify/functions"
 
