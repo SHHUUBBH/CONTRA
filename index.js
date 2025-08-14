@@ -41,6 +41,14 @@ app.get('/contra.html', (req, res) => {
   res.sendFile(path.join(__dirname, 'HOMEPAGE/HOMEPAGE/contra.html'));
 });
 
+// Route for AI page - redirect to Flask server
+app.get('/AI', (req, res) => {
+  // Redirect to Flask server running on different port/domain
+  // Update this URL based on where your Flask server is deployed
+  const flaskUrl = process.env.FLASK_APP_URL || 'http://localhost:5000';
+  res.redirect(`${flaskUrl}/AI`);
+});
+
 // API proxy to Flask
 app.post('/api/:endpoint', async (req, res) => {
   try {
