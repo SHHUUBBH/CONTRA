@@ -1,9 +1,3 @@
-# Minimal requirements for Netlify Functions
-Flask
-requests
-python-dotenv
-groq
-pillow
-plotly
-numpy
-beautifulsoup4
+Flask==2.3.3
+requests==2.31.0
+python-dotenv==1.0.0
