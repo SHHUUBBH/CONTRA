@@ -14,6 +14,7 @@ groq>=0.4.0
 stability-sdk>=0.8.0
 wikipedia>=1.4.0
 wikipedia-api>=0.6.0
+gnews>=0.4.0
 SPARQLWrapper>=2.0.0
 
 # Data Processing
