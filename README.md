@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="static/img/icons/favicon-icon.svg" alt="CONTRA Logo" width="150" height="150"/>
+  <img src="HOMEPAGE/HOMEPAGE/assets/Images/icons/favicon-icon.svg" alt="CONTRA Logo" width="150" height="150"/>
   
   <h1>CONTRA</h1>
   <h3>Data-Driven Art Generator & Visual Storytelling Platform</h3>
