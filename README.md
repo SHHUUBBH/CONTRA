@@ -27,39 +27,9 @@
   <br/>
   
   <p align="center">
-    <img src="https://i.imgur.com/n2qJehF.gif" alt="CONTRA Demo" width="80%"/>
+    <img src="HOMEPAGE/HOMEPAGE/assets/Images/homepage.png" alt="CONTRA Demo" width="80%"/>
   </p>
 </div>
-
-<hr/>
-
-CONTRA integrates AI-powered capabilities to transform user prompts into rich multimedia experiences:
-
-<table>
-  <tr>
-    <td width="33%" align="center">
-      <img src="https://i.imgur.com/mXSsUOu.png" width="60" alt="Art Generation"/>
-      <br/>
-      <strong>AI-Generated Art</strong>
-      <br/>
-      <small>Stable Diffusion 3.5</small>
-    </td>
-    <td width="33%" align="center">
-      <img src="https://i.imgur.com/0e87Jcx.png" width="60" alt="Narrative Generation"/>
-      <br/>
-      <strong>Narrative Synthesis</strong>
-      <br/>
-      <small>Groq LLama 3.3</small>
-    </td>
-    <td width="33%" align="center">
-      <img src="https://i.imgur.com/F7BrIPU.png" width="60" alt="Data Visualization"/>
-      <br/>
-      <strong>Interactive Visualizations</strong>
-      <br/>
-      <small>Plotly & Three.js</small>
-    </td>
-  </tr>
-</table>
 
 <h2 id="project-creators">👨‍💻 Project Creators</h2>
 
@@ -181,7 +151,6 @@ CONTRA integrates AI-powered capabilities to transform user prompts into rich mu
         <img src="https://img.shields.io/badge/CSS3-1572B6?style=flat&logo=css3&logoColor=white" alt="CSS3"/>
         <img src="https://img.shields.io/badge/JavaScript-F7DF1E?style=flat&logo=javascript&logoColor=black" alt="JavaScript"/>
         <img src="https://img.shields.io/badge/GSAP-88CE02?style=flat&logo=greensock&logoColor=white" alt="GSAP"/>
-        <img src="https://img.shields.io/badge/Three.js-black?style=flat&logo=three.js&logoColor=white" alt="Three.js"/>
       </td>
     </tr>
     <tr>
