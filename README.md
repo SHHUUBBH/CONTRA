@@ -40,16 +40,16 @@
       <br/>
       <strong>Subhro Pal</strong>
       <br/>
-      <em>Lead Developer & UI/UX Designer</em>
+      <em>Data Science & Analytics</em>
       <br/>
-      <small>Frontend implementation, responsive design, animations, and user experience</small>
+      <small>Frontend implementation, responsive design, animations, and user experience, backend pipeline connection</small>
     </td>
     <td width="50%" align="center">
       <img src="https://github.com/identicons/yuvrajsingh.png" width="100" alt="Yuvraj Singh Kushwah"/>
       <br/>
       <strong>Yuvraj Singh Kushwah</strong>
       <br/>
-      <em>Lead Architect & Backend Developer</em>
+      <em>Data Science & Gen AI Developer</em>
       <br/>
       <small>Data processing pipeline, API integrations, and server infrastructure</small>
     </td>
@@ -469,12 +469,6 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 <h3>Inspiration</h3>
 
 - This project was inspired by advances in generative AI and the potential for combining multiple data sources to create rich, context-aware digital experiences.
-
-<h3>Contributors</h3>
-
-- **Subhro Pal** - Lead Developer and UI/UX Designer who implemented the responsive design, custom animations,Node.js server, and integrated the AI generation components.
-- **Yuvraj Singh Kushwah** - Lead Architect and Backend Developer who designed the data processing pipeline, API integrations infrastructure.
-- Special thanks to the open source community for the libraries and tools that made this project possible.
 
 <h2 id="license">📄 License</h2>
 
