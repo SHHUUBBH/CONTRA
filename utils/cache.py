@@ -231,6 +231,10 @@ def disk_cache(subdir: Optional[str] = None) -> Callable[[Callable[..., T]], Cal
             # Call function and cache result
             result = func(*args, **kwargs)
             
+            # Do not cache failed results (e.g. API errors, rate limits)
+            if isinstance(result, dict) and not result.get('success', True):
+                return result
+
             try:
                 with open(cache_file, 'wb') as f:
                     pickle.dump(result, f)

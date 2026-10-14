@@ -107,7 +107,18 @@ async function setupGenerateForm() {
     }
     
     generateForm.addEventListener('submit', async function(e) {
-            e.preventDefault();
+        e.preventDefault();
+        
+        // Ensure user enters key before using the project
+        if (window.isContraProjectLocked || !window.hasValidContraKey) {
+            openByokModal(true);
+            const card = document.querySelector('.byok-modal-card');
+            if (card) {
+                card.classList.add('shake-it');
+                setTimeout(() => card.classList.remove('shake-it'), 500);
+            }
+            return;
+        }
             
         // Get the topic input and validate
         const topicInput = document.getElementById('topic');
@@ -449,25 +460,46 @@ async function setupGenerateForm() {
             
         // Add error handling for the fetch request
         try {
+            const reqHeaders = {
+                'Content-Type': 'application/json',
+            };
+            const storedKey = getStoredGroqKey();
+            if (storedKey) {
+                reqHeaders['X-Groq-API-Key'] = storedKey;
+            }
+
             const response = await fetch('/api/generate', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers: reqHeaders,
                 body: JSON.stringify(payload),
             });
             
             // Handle different error status codes
             if (!response.ok) {
                 // Try to get error message from response
-                let errorMessage = `Server responded with status: ${response.status}`;
+                let errorData = null;
                 try {
-                    const errorData = await response.json();
-                    if (errorData && errorData.error) {
-                        errorMessage = errorData.error;
-                    }
+                    errorData = await response.json();
                 } catch (parseError) {
                     console.error('Could not parse error response:', parseError);
+                }
+                
+                // If LLaMA API quota reached or key invalid/required:
+                if (response.status === 402 || (errorData && errorData.llama_quota_over)) {
+                    loadingSection.classList.add('hidden');
+                    if (generateBtn) {
+                        generateBtn.disabled = false;
+                        generateBtn.innerHTML = 'Generate <span class="icon-container"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg></span>';
+                    }
+                    lockProject("Groq LLaMA API quota reached. Please bring your own key to test this project.");
+                    openByokModal(true);
+                    showByokAlert(errorData && errorData.error ? errorData.error : 'Groq LLaMA API quota reached. Please bring your own key to test this project.', 'error');
+                    return;
+                }
+
+                let errorMessage = `Server responded with status: ${response.status}`;
+                if (errorData && errorData.error) {
+                    errorMessage = errorData.error;
                 }
                 
                 throw new Error(errorMessage);
@@ -2099,12 +2131,18 @@ function setupConversation() {
             }
             
             // Send to API
+            const convHeaders = {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            };
+            const storedKey = getStoredGroqKey();
+            if (storedKey) {
+                convHeaders['X-Groq-API-Key'] = storedKey;
+            }
+
             const response = await fetch('/api/conversation', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
+                headers: convHeaders,
                 body: JSON.stringify({
                     topic: conversationContext.topic,
                     question: message,
@@ -2119,15 +2157,20 @@ function setupConversation() {
                 typingIndicator.remove();
             }
             
-            // Process response
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status} ${response.statusText}`);
+            let data = null;
+            try {
+                data = await response.json();
+            } catch (e) {
+                data = null;
             }
-            
-            const data = await response.json();
-            
-            if (!data.success) {
-                throw new Error(data.error || 'Failed to get response');
+
+            if (!response.ok || (data && !data.success)) {
+                if (response.status === 402 || (data && data.llama_quota_over)) {
+                    openByokModal(true);
+                    showByokAlert('Groq LLaMA API quota exceeded. Please enter your Groq key.', 'error');
+                    throw new Error('Groq LLaMA API quota reached. Please provide your own key.');
+                }
+                throw new Error((data && data.error) || `API error: ${response.status}`);
             }
             
             // Display AI message
@@ -2642,6 +2685,10 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     setupUIEnhancements();
+    
+    // Initialize BYOK (Bring Your Own Key) & Key Management listeners
+    initByokModalAndKeyListeners();
+    checkGroqKeyStatus(true);
     
     // Check API status
     checkApiStatus();
@@ -3539,4 +3586,474 @@ function setupFullscreenViz() {
         });
     });
 }
+
+// ========================================================
+// CONTRA GROQ LLaMA API KEY (BYOK) & PULL KEY MODULE
+// ========================================================
+const CONTRA_KEY_STORAGE = 'contra_groq_api_key';
+window.hasValidContraKey = false;
+window.isContraProjectLocked = false;
+
+function getStoredGroqKey() {
+    return localStorage.getItem(CONTRA_KEY_STORAGE) || sessionStorage.getItem(CONTRA_KEY_STORAGE) || '';
+}
+
+function setStoredGroqKey(key) {
+    if (key) {
+        const clean = key.trim();
+        localStorage.setItem(CONTRA_KEY_STORAGE, clean);
+        sessionStorage.setItem(CONTRA_KEY_STORAGE, clean);
+    }
+}
+
+function clearStoredGroqKey() {
+    localStorage.removeItem(CONTRA_KEY_STORAGE);
+    sessionStorage.removeItem(CONTRA_KEY_STORAGE);
+}
+
+/**
+ * Initialize event listeners for BYOK modal and pull key confirmation
+ */
+function initByokModalAndKeyListeners() {
+    // Form submission
+    const byokForm = document.getElementById('byok-form');
+    if (byokForm) {
+        byokForm.addEventListener('submit', handleByokSubmit);
+    }
+
+    // Modal close button
+    const closeBtn = document.getElementById('byok-close-btn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => closeByokModal(false));
+    }
+
+    // Toggle password visibility
+    const toggleBtn = document.getElementById('byok-toggle-show');
+    const inputField = document.getElementById('byok-api-key-input');
+    const eyeIcon = document.getElementById('byok-eye-icon');
+    if (toggleBtn && inputField) {
+        toggleBtn.addEventListener('click', () => {
+            if (inputField.type === 'password') {
+                inputField.type = 'text';
+                if (eyeIcon) {
+                    eyeIcon.classList.remove('fa-eye');
+                    eyeIcon.classList.add('fa-eye-slash');
+                }
+            } else {
+                inputField.type = 'password';
+                if (eyeIcon) {
+                    eyeIcon.classList.remove('fa-eye-slash');
+                    eyeIcon.classList.add('fa-eye');
+                }
+            }
+        });
+    }
+
+    // Click outside to close (only if not strict)
+    const byokModal = document.getElementById('byok-modal');
+    if (byokModal) {
+        byokModal.addEventListener('click', (e) => {
+            if (e.target === byokModal) {
+                closeByokModal(false);
+            }
+        });
+    }
+
+    // Pull key confirmation modal
+    const pullModal = document.getElementById('pull-key-modal');
+    const confirmPullBtn = document.getElementById('confirm-pull-btn');
+    const cancelPullBtn = document.getElementById('cancel-pull-btn');
+
+    if (confirmPullBtn) {
+        confirmPullBtn.addEventListener('click', executePullApiKey);
+    }
+    if (cancelPullBtn) {
+        cancelPullBtn.addEventListener('click', closePullModal);
+    }
+    if (pullModal) {
+        pullModal.addEventListener('click', (e) => {
+            if (e.target === pullModal) {
+                closePullModal();
+            }
+        });
+    }
+
+    // Handle Escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closePullModal();
+            closeByokModal(false);
+        }
+    });
+}
+
+/**
+ * Check API key status with backend and update dashboard state
+ */
+async function checkGroqKeyStatus(autoOpenModalOnFail = true) {
+    const key = getStoredGroqKey();
+    const headers = {};
+    if (key) {
+        headers['X-Groq-API-Key'] = key;
+    }
+    
+    try {
+        const response = await fetch('/api/key/status', {
+            method: 'GET',
+            headers: headers
+        });
+        const data = await response.json();
+        
+        if (data.success && data.has_valid_key) {
+            window.hasValidContraKey = true;
+            window.isContraProjectLocked = false;
+            unlockProject();
+            updateApiKeyBanner(true, data.masked_key || (key ? `${key.substring(0, 6)}••••${key.substring(key.length - 4)}` : 'Active'), data.is_custom);
+            updateNavKeyChip(true, data.masked_key || (key ? `${key.substring(0, 6)}••••` : 'Active'));
+            closeByokModal(true);
+            return true;
+        } else {
+            window.hasValidContraKey = false;
+            window.isContraProjectLocked = true;
+            lockProject("LLaMA API quota reached or key unavailable. Please bring your own key to test this project.");
+            updateApiKeyBanner(false, null, false);
+            updateNavKeyChip(false);
+            if (autoOpenModalOnFail) {
+                openByokModal(true);
+            }
+            return false;
+        }
+    } catch (e) {
+        console.error("Failed to check key status:", e);
+        if (!key) {
+            window.hasValidContraKey = false;
+            window.isContraProjectLocked = true;
+            lockProject("Please bring your own key to test this project.");
+            updateApiKeyBanner(false, null, false);
+            updateNavKeyChip(false);
+            if (autoOpenModalOnFail) {
+                openByokModal(true);
+            }
+            return false;
+        }
+        return true;
+    }
+}
+
+/**
+ * Update the Dashboard API Key Status Banner
+ */
+function updateApiKeyBanner(isActive, maskedKey, isCustom) {
+    const banner = document.getElementById('api-key-banner');
+    const indicator = document.getElementById('key-status-indicator');
+    const badgeText = document.getElementById('key-badge-text');
+    const statusMsg = document.getElementById('key-status-msg');
+    const actions = document.getElementById('key-banner-actions');
+    
+    if (!banner) return;
+    banner.classList.remove('hidden');
+    
+    if (isActive) {
+        banner.className = 'api-key-banner active-key';
+        if (indicator) indicator.className = 'key-status-indicator online';
+        if (badgeText) badgeText.textContent = isCustom ? 'Custom Groq LLaMA 3.3 Active' : 'Groq LLaMA 3.3 Online';
+        if (statusMsg) {
+            statusMsg.innerHTML = `Groq LLaMA API Ready <span class="key-masked-tag">${maskedKey || 'gsk_••••'}</span>`;
+        }
+        if (actions) {
+            actions.innerHTML = `
+                <button type="button" class="btn-pull-key" id="banner-pull-key-btn" title="Take out (clear) your API key from this project">
+                    <i class="fas fa-eject"></i>
+                    <span>Pull API Key</span>
+                </button>
+                <button type="button" class="btn-change-key" id="banner-change-key-btn" title="Change your Groq API key">
+                    <i class="fas fa-edit"></i>
+                    <span>Change Key</span>
+                </button>
+            `;
+            const pullBtn = document.getElementById('banner-pull-key-btn');
+            if (pullBtn) pullBtn.addEventListener('click', promptPullApiKey);
+            const changeBtn = document.getElementById('banner-change-key-btn');
+            if (changeBtn) changeBtn.addEventListener('click', () => openByokModal(false));
+        }
+    } else {
+        banner.className = 'api-key-banner quota-over';
+        if (indicator) indicator.className = 'key-status-indicator warning';
+        if (badgeText) badgeText.textContent = 'Groq LLaMA API Key Required';
+        if (statusMsg) {
+            statusMsg.textContent = 'Project API quota has been reached. Please bring your own Groq key to test.';
+        }
+        if (actions) {
+            actions.innerHTML = `
+                <button type="button" class="btn-enter-key" id="banner-enter-key-btn">
+                    <i class="fas fa-key"></i>
+                    <span>Bring Your Key</span>
+                </button>
+            `;
+            const enterBtn = document.getElementById('banner-enter-key-btn');
+            if (enterBtn) enterBtn.addEventListener('click', () => openByokModal(true));
+        }
+    }
+}
+
+/**
+ * Update the Navbar Key Chip
+ */
+function updateNavKeyChip(isActive, maskedKey) {
+    const desktopNavChip = document.getElementById('nav-key-status');
+    const mobileNavChip = document.getElementById('mobile-nav-key-status');
+    
+    const chipHtml = isActive
+        ? `<button type="button" class="nav-key-chip active" id="desktop-nav-pull-btn" title="Click to pull out API key">
+             <i class="fas fa-key"></i>
+             <span>Key: ${maskedKey || 'Active'}</span>
+             <i class="fas fa-eject" style="margin-left:4px; opacity:0.8;"></i>
+           </button>`
+        : `<button type="button" class="nav-key-chip warning" id="desktop-nav-enter-btn" title="Groq API key required">
+             <i class="fas fa-exclamation-triangle"></i>
+             <span>Bring Key</span>
+           </button>`;
+
+    if (desktopNavChip) {
+        desktopNavChip.innerHTML = chipHtml;
+        const pullBtn = desktopNavChip.querySelector('#desktop-nav-pull-btn');
+        if (pullBtn) pullBtn.addEventListener('click', promptPullApiKey);
+        const enterBtn = desktopNavChip.querySelector('#desktop-nav-enter-btn');
+        if (enterBtn) enterBtn.addEventListener('click', () => openByokModal(true));
+    }
+    
+    if (mobileNavChip) {
+        mobileNavChip.innerHTML = chipHtml;
+        const pullBtn = mobileNavChip.querySelector('#desktop-nav-pull-btn');
+        if (pullBtn) pullBtn.addEventListener('click', promptPullApiKey);
+        const enterBtn = mobileNavChip.querySelector('#desktop-nav-enter-btn');
+        if (enterBtn) enterBtn.addEventListener('click', () => openByokModal(true));
+    }
+}
+
+/**
+ * Open BYOK Modal
+ */
+function openByokModal(isStrict = true) {
+    const modal = document.getElementById('byok-modal');
+    const closeBtn = document.getElementById('byok-close-btn');
+    const input = document.getElementById('byok-api-key-input');
+    const alertBox = document.getElementById('byok-alert');
+    
+    if (!modal) return;
+    
+    modal.classList.remove('hidden');
+    
+    // In strict mode (user has no key and server key is over), cannot dismiss without entering key!
+    if (isStrict && !window.hasValidContraKey) {
+        if (closeBtn) closeBtn.classList.add('hidden');
+        modal.dataset.strict = 'true';
+    } else {
+        if (closeBtn) closeBtn.classList.remove('hidden');
+        modal.dataset.strict = 'false';
+    }
+    
+    if (alertBox) alertBox.classList.add('hidden');
+    if (input) {
+        const stored = getStoredGroqKey();
+        input.value = stored || '';
+        setTimeout(() => input.focus(), 250);
+    }
+}
+
+/**
+ * Close BYOK Modal
+ */
+function closeByokModal(force = false) {
+    const modal = document.getElementById('byok-modal');
+    if (!modal) return;
+    
+    if (!force && modal.dataset.strict === 'true' && !window.hasValidContraKey) {
+        const card = modal.querySelector('.byok-modal-card');
+        if (card) {
+            card.classList.add('shake-it');
+            setTimeout(() => card.classList.remove('shake-it'), 500);
+        }
+        return;
+    }
+    
+    modal.classList.add('hidden');
+}
+
+/**
+ * Validate and save user-entered key
+ */
+async function handleByokSubmit(e) {
+    if (e) e.preventDefault();
+    const input = document.getElementById('byok-api-key-input');
+    const submitBtn = document.getElementById('byok-submit-btn');
+    
+    const key = input ? input.value.trim() : '';
+    if (!key) {
+        showByokAlert('Please enter your Groq API key.', 'error');
+        if (input) input.focus();
+        return;
+    }
+    
+    // Show validation progress
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        const btnText = submitBtn.querySelector('.btn-text');
+        if (btnText) btnText.textContent = 'Validating Key on Groq...';
+        const spinner = submitBtn.querySelector('.btn-spinner');
+        if (spinner) spinner.classList.remove('hidden');
+    }
+    
+    try {
+        const response = await fetch('/api/key/validate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: key })
+        });
+        const data = await response.json();
+        
+        if (response.ok && data.success && data.valid) {
+            setStoredGroqKey(key);
+            window.hasValidContraKey = true;
+            window.isContraProjectLocked = false;
+            showByokAlert('✅ API key verified! Unlocking CONTRA...', 'success');
+            
+            setTimeout(() => {
+                closeByokModal(true);
+                checkGroqKeyStatus(false);
+                unlockProject();
+                showToastNotification('🎉 API Key active! You can now use CONTRA.');
+            }, 700);
+        } else {
+            showByokAlert(`❌ ${data.error || 'Failed to validate API key. Please check your key on Groq Console.'}`, 'error');
+        }
+    } catch (err) {
+        showByokAlert(`Network error validating key: ${err.message}`, 'error');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            const btnText = submitBtn.querySelector('.btn-text');
+            if (btnText) btnText.textContent = 'Validate & Unlock Project';
+            const spinner = submitBtn.querySelector('.btn-spinner');
+            if (spinner) spinner.classList.add('hidden');
+        }
+    }
+}
+
+function showByokAlert(msg, type = 'error') {
+    const alertBox = document.getElementById('byok-alert');
+    if (!alertBox) return;
+    alertBox.className = `byok-alert ${type}`;
+    alertBox.textContent = msg;
+    alertBox.classList.remove('hidden');
+}
+
+/**
+ * Show Pull Confirmation Modal
+ */
+function promptPullApiKey() {
+    const modal = document.getElementById('pull-key-modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+    }
+}
+
+function closePullModal() {
+    const modal = document.getElementById('pull-key-modal');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+}
+
+/**
+ * Execute Pull Key Action
+ */
+async function executePullApiKey() {
+    closePullModal();
+    clearStoredGroqKey();
+    
+    try {
+        await fetch('/api/key/pull', { method: 'POST' });
+    } catch (e) {
+        console.warn('Server key pull request error:', e);
+    }
+    
+    showToastNotification('⏏️ API key pulled and removed from this browser.');
+    // Re-check status: will lock project and open BYOK modal because server key is over
+    await checkGroqKeyStatus(true);
+}
+
+/**
+ * Lock project UI when key is required
+ */
+function lockProject(reason) {
+    window.isContraProjectLocked = true;
+    const generateBtn = document.getElementById('generate-btn');
+    if (generateBtn) {
+        generateBtn.setAttribute('data-locked', 'true');
+        generateBtn.title = reason || 'Groq API Key required to generate content';
+    }
+    
+    const form = document.getElementById('generate-form');
+    if (form) {
+        form.classList.add('form-requires-key');
+    }
+}
+
+function unlockProject() {
+    window.isContraProjectLocked = false;
+    const generateBtn = document.getElementById('generate-btn');
+    if (generateBtn) {
+        generateBtn.removeAttribute('data-locked');
+        generateBtn.title = '';
+    }
+    const form = document.getElementById('generate-form');
+    if (form) {
+        form.classList.remove('form-requires-key');
+    }
+}
+
+/**
+ * Toast notification helper
+ */
+function showToastNotification(message) {
+    let toast = document.getElementById('contra-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'contra-toast';
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 28px;
+            right: 28px;
+            background: linear-gradient(135deg, rgba(20, 24, 40, 0.96), rgba(10, 12, 24, 0.98));
+            border: 1px solid rgba(139, 92, 246, 0.45);
+            color: #ffffff;
+            padding: 14px 22px;
+            border-radius: 14px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8), 0 0 25px rgba(139, 92, 246, 0.35);
+            z-index: 100000;
+            font-size: 0.9rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+            transform: translateY(20px);
+            opacity: 0;
+            pointer-events: none;
+        `;
+        document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.style.transform = 'translateY(0)';
+    toast.style.opacity = '1';
+    toast.style.pointerEvents = 'auto';
+    
+    setTimeout(() => {
+        toast.style.transform = 'translateY(20px)';
+        toast.style.opacity = '0';
+        toast.style.pointerEvents = 'none';
+    }, 4000);
+}
+
   

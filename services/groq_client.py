@@ -59,6 +59,47 @@ class GroqClient:
         if not self.api_key:
             logger.warning("No Groq API key provided. API calls will fail.")
     
+    def validate_api_key(self, api_key: str) -> Tuple[bool, str]:
+        """
+        Validate a Groq API key by checking models or running a minimal query.
+        Returns (is_valid, message).
+        """
+        if not api_key or not isinstance(api_key, str) or not api_key.strip():
+            return False, "API key cannot be empty."
+        
+        key = api_key.strip()
+        if key in ("your_groq_api_key_here", "dummy_key_replace_with_real_one"):
+            return False, "This is a placeholder key. Please provide your actual Groq API key."
+        
+        try:
+            headers = {
+                "Authorization": f"Bearer {key}",
+                "Content-Type": "application/json"
+            }
+            # Test chat completions with the LLaMA model
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": "ping"}],
+                "max_tokens": 2
+            }
+            res = requests.post(self.api_url, headers=headers, json=payload, timeout=12)
+            if res.status_code == 200:
+                return True, f"API key is valid and working with LLaMA ({self.model})!"
+            elif res.status_code == 401 or res.status_code == 403:
+                return False, "Invalid Groq API key. Please check your key on the Groq Console."
+            elif res.status_code == 429:
+                return False, "Rate limit or quota exceeded for this API key on Groq."
+            else:
+                err_msg = res.text
+                try:
+                    err_json = res.json()
+                    err_msg = err_json.get("error", {}).get("message", res.text)
+                except Exception:
+                    pass
+                return False, f"Groq error ({res.status_code}): {err_msg}"
+        except Exception as e:
+            return False, f"Failed to connect to Groq API: {str(e)}"
+
     @disk_cache(subdir='groq')
     def generate_text(
         self,
@@ -66,7 +107,8 @@ class GroqClient:
         max_tokens: int = 1024,
         temperature: float = 0.7,
         top_p: float = 0.9,
-        stop: Optional[List[str]] = None
+        stop: Optional[List[str]] = None,
+        api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate text using the Groq LLaMA API.
@@ -77,6 +119,7 @@ class GroqClient:
             temperature: Sampling temperature (0.0-1.0, higher = more creative)
             top_p: Nucleus sampling parameter (0.0-1.0)
             stop: Optional list of strings that stop generation when encountered
+            api_key: Optional override for Groq API key
             
         Returns:
             Dictionary containing generated text and metadata
@@ -84,17 +127,20 @@ class GroqClient:
         import time
         start_time = time.time()
         
+        active_key = (api_key or self.api_key or '').strip()
         logger.info(f"Generating text with Groq LLaMA (model={self.model})")
         
-        if not self.api_key:
+        if not active_key or active_key in ("your_groq_api_key_here", "dummy_key_replace_with_real_one"):
             return {
                 "success": False,
-                "error": "No Groq API key provided.",
+                "error": "Groq LLaMA API key not configured or unavailable. Please bring your own key to test this project.",
+                "requires_custom_key": True,
+                "llama_quota_over": True,
                 "text": ""
             }
         
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "Authorization": f"Bearer {active_key}",
             "Content-Type": "application/json"
         }
         
@@ -147,9 +193,38 @@ class GroqClient:
                 
         except requests.exceptions.RequestException as e:
             logger.error(f"Groq API request error: {str(e)}")
+            status_code = getattr(e.response, 'status_code', None) if hasattr(e, 'response') and e.response is not None else None
+            error_details = ""
+            if hasattr(e, 'response') and e.response is not None:
+                try:
+                    err_json = e.response.json()
+                    error_details = err_json.get('error', {}).get('message', e.response.text)
+                except Exception:
+                    error_details = e.response.text
+            
+            err_lower = (str(error_details) + " " + str(e)).lower()
+            is_quota_or_auth = (
+                status_code in (401, 402, 403, 429) or
+                any(k in err_lower for k in [
+                    "quota", "rate limit", "tokens", "credits", "unauthorized",
+                    "invalid api key", "exceeded", "resource_exhausted", "insufficient_quota"
+                ])
+            )
+            
+            msg = f"API request failed: {str(e)}"
+            if is_quota_or_auth:
+                if status_code == 429 or "rate" in err_lower or "quota" in err_lower:
+                    msg = "Groq LLaMA API rate limit or quota exceeded. Please bring your own key to test this project."
+                else:
+                    msg = "Groq LLaMA API key unauthorized or invalid. Please bring your own key to test this project."
+            
             return {
                 "success": False,
-                "error": f"API request failed: {str(e)}",
+                "error": msg,
+                "requires_custom_key": is_quota_or_auth,
+                "llama_quota_over": is_quota_or_auth,
+                "status_code": status_code,
+                "details": error_details,
                 "text": ""
             }
         except Exception as e:
@@ -160,13 +235,14 @@ class GroqClient:
                 "text": ""
             }
     
-    def parse_structured_output(self, prompt: str, output_format: Dict[str, Any]) -> Dict[str, Any]:
+    def parse_structured_output(self, prompt: str, output_format: Dict[str, Any], api_key: Optional[str] = None) -> Dict[str, Any]:
         """
         Generate structured output by instructing the model to output in a specific format.
         
         Args:
             prompt: The input prompt
             output_format: Dictionary describing the expected output structure
+            api_key: Optional Groq API key override
             
         Returns:
             Dictionary with parsed structured output or error
@@ -176,7 +252,7 @@ class GroqClient:
         full_prompt = f"{prompt}\n\n{format_instr}\n\nJSON response:"
         
         # Generate text
-        result = self.generate_text(full_prompt, temperature=0.3)  # Lower temperature for more deterministic output
+        result = self.generate_text(full_prompt, temperature=0.3, api_key=api_key)  # Lower temperature for more deterministic output
         
         if not result["success"]:
             return result

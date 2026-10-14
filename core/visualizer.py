@@ -8,9 +8,16 @@ import time
 import re
 from typing import Dict, List, Any, Optional, Tuple
 
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.utils import PlotlyJSONEncoder
+try:
+    import plotly.graph_objects as go
+    import plotly.express as px
+    from plotly.utils import PlotlyJSONEncoder
+    HAS_PLOTLY = True
+except ImportError:
+    HAS_PLOTLY = False
+    go = None
+    px = None
+    PlotlyJSONEncoder = json.JSONEncoder
 
 from models.data_model import TopicData, Visualization
 from config import ContentConfig
@@ -40,6 +47,12 @@ class Visualizer:
         """
         start_time = time.time()
         logger.info(f"Creating visualizations for topic: {topic_data.topic}")
+        
+        if not HAS_PLOTLY:
+            return {
+                "success": False,
+                "error": "Plotly is not installed"
+            }
         
         try:
             # Create individual visualizations

@@ -6,7 +6,7 @@ import os
 import logging
 import time
 import re
-from flask import Flask, Blueprint, request, jsonify, render_template, send_from_directory, abort
+from flask import Flask, Blueprint, request, jsonify, render_template, send_from_directory, abort, session
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 import json
@@ -17,9 +17,10 @@ from core.data_fetcher import data_fetcher
 from core.narrative_generator import narrative_generator
 from core.image_generator import image_generator
 from core.visualizer import visualizer
+from services.groq_client import groq_client
 from utils.validators import validate_input, validate_topic
 from utils.helpers import format_time_elapsed
-from utils.api_status import get_all_api_statuses
+from utils.api_status import get_all_api_statuses, check_groq_api
 from utils.text_formatter import correct_spelling, format_title
 
 # Configure logging
@@ -36,6 +37,104 @@ else:
 
 # Create API blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
+
+def get_request_groq_key():
+    """Extract Groq API key from request headers, JSON body, or session."""
+    key = request.headers.get('X-Groq-API-Key', '').strip()
+    if not key:
+        auth_header = request.headers.get('Authorization', '')
+        if auth_header.startswith('Bearer gsk_'):
+            key = auth_header[7:].strip()
+    if not key and request.is_json:
+        try:
+            data = request.get_json(silent=True) or {}
+            if isinstance(data, dict):
+                key = str(data.get('groq_api_key', '')).strip()
+        except Exception:
+            pass
+    if not key:
+        try:
+            key = session.get('groq_api_key', '').strip()
+        except Exception:
+            pass
+    return key or None
+
+@api_bp.route('/key/status', methods=['GET', 'POST'])
+def key_status():
+    """
+    Check whether a valid Groq API key is currently active and available.
+    Returns status of custom key (if provided) or server default key.
+    """
+    groq_key = get_request_groq_key()
+    
+    if groq_key:
+        valid, msg = groq_client.validate_api_key(groq_key)
+        return jsonify({
+            "success": True,
+            "has_valid_key": valid,
+            "is_custom": True,
+            "requires_custom_key": not valid,
+            "llama_quota_over": not valid,
+            "masked_key": f"{groq_key[:6]}••••{groq_key[-4:]}" if len(groq_key) > 10 else "••••",
+            "message": msg
+        })
+    else:
+        # Check default server key
+        default_status = check_groq_api()
+        is_ok = (default_status.get("status") == "ok" and default_status.get("available") is True)
+        return jsonify({
+            "success": True,
+            "has_valid_key": is_ok,
+            "is_custom": False,
+            "requires_custom_key": not is_ok,
+            "llama_quota_over": not is_ok,
+            "message": "Default server key active" if is_ok else "Groq LLaMA API quota reached or key unavailable. Please bring your own key to test this project."
+        })
+
+@api_bp.route('/key/validate', methods=['POST'])
+def key_validate():
+    """Validate a user-provided Groq API key and optionally save in session."""
+    data = request.get_json(silent=True) or {}
+    key = data.get('api_key', '').strip()
+    if not key:
+        return jsonify({
+            "success": False,
+            "valid": False,
+            "error": "API key cannot be empty. Please enter your Groq API key."
+        }), 400
+    
+    valid, message = groq_client.validate_api_key(key)
+    if valid:
+        try:
+            session['groq_api_key'] = key
+        except Exception:
+            pass
+        return jsonify({
+            "success": True,
+            "valid": True,
+            "masked_key": f"{key[:6]}••••{key[-4:]}" if len(key) > 10 else "••••",
+            "message": message
+        })
+    else:
+        return jsonify({
+            "success": False,
+            "valid": False,
+            "error": message
+        }), 400
+
+@api_bp.route('/key/pull', methods=['POST'])
+def key_pull():
+    """Pull (take out / clear) the user's API key from session."""
+    try:
+        session.pop('groq_api_key', None)
+    except Exception:
+        pass
+    
+    return jsonify({
+        "success": True,
+        "message": "API key has been pulled and cleared successfully."
+    })
+
 
 # Create static file blueprint for serving generated images
 images_bp = Blueprint('images', __name__, url_prefix='/images')
@@ -337,18 +436,29 @@ def generate():
         # 2. Generate narrative
         logger.info("Step 2: Generating narrative...")
         narrative_result = None
+        groq_api_key = get_request_groq_key()
         try:
             narrative_result = narrative_generator.generate_narrative(
                 topic_data=topic_data,
                 tone=tone,
                 max_tokens=max_length,
                 temperature=temperature,
-                expertise_level=expertise_level
+                expertise_level=expertise_level,
+                api_key=groq_api_key
             )
             
             if not narrative_result.get('success', False):
                 logger.warning(f"Narrative generation failed: {narrative_result.get('error')}")
-                # Create a simple fallback narrative if API fails
+                # If API quota is over or key is missing/invalid, STOP and require user's key
+                if narrative_result.get('requires_custom_key') or narrative_result.get('llama_quota_over'):
+                    return jsonify({
+                        "success": False,
+                        "error": narrative_result.get('error', 'Groq LLaMA API quota exceeded or key invalid. Please bring your own API key to test this project.'),
+                        "llama_quota_over": True,
+                        "requires_custom_key": True
+                    }), 402
+                
+                # Create a simple fallback narrative if other temporary issue
                 narrative_result = {
                     "success": True,
                     "narrative": {
@@ -361,17 +471,12 @@ def generate():
                 }
         except Exception as e:
             logger.exception(f"Narrative generation error: {str(e)}")
-            # Create a simple fallback narrative
-            narrative_result = {
-                "success": True,
-                "narrative": {
-                    "bullets": f"• Information about {topic}\n• Based on available data",
-                    "narrative": topic_data.wikipedia.summary if hasattr(topic_data, 'wikipedia') and hasattr(topic_data.wikipedia, 'summary') else f"Information about {topic} could not be generated.",
-                    "prompt": f"Fallback content for {topic}",
-                    "model": "fallback",
-                    "expertise_level": expertise_level
-                }
-            }
+            return jsonify({
+                "success": False,
+                "error": f"Narrative generation error: {str(e)}",
+                "llama_quota_over": True,
+                "requires_custom_key": True
+            }), 500
         
         # Add the narrative to the response
         if narrative_result and narrative_result.get('narrative'):
@@ -624,13 +729,17 @@ def analyze_sentiment():
         }), 500
 
     # Analyze sentiment
-    sentiment_result = narrative_generator.analyze_sentiment(topic_data)
+    groq_api_key = get_request_groq_key()
+    sentiment_result = narrative_generator.analyze_sentiment(topic_data, api_key=groq_api_key)
     
     if not sentiment_result.get('success', False):
+        is_quota = sentiment_result.get('requires_custom_key') or sentiment_result.get('llama_quota_over')
         return jsonify({
             "success": False,
-            "error": "Failed to analyze sentiment"
-        }), 500
+            "error": sentiment_result.get('error', "Failed to analyze sentiment"),
+            "llama_quota_over": is_quota,
+            "requires_custom_key": is_quota
+        }), 402 if is_quota else 500
     
     return jsonify({
         "success": True,
@@ -680,18 +789,23 @@ def generate_story():
         }), 500
 
     # Generate creative story
+    groq_api_key = get_request_groq_key()
     story_result = narrative_generator.generate_creative_story(
         topic_data=topic_data,
         style=style,
         genre=genre,
-        temperature=temperature
+        temperature=temperature,
+        api_key=groq_api_key
     )
     
     if not story_result.get('success', False):
+        is_quota = story_result.get('requires_custom_key') or story_result.get('llama_quota_over')
         return jsonify({
             "success": False,
-            "error": "Failed to generate story"
-        }), 500
+            "error": story_result.get('error', "Failed to generate story"),
+            "llama_quota_over": is_quota,
+            "requires_custom_key": is_quota
+        }), 402 if is_quota else 500
     
     return jsonify({
         "success": True,
@@ -781,21 +895,25 @@ def conversation():
         
         # Generate the AI response
         try:
-            # Use the narrative generator to create a conversation response
+            groq_api_key = get_request_groq_key()
             response_result = narrative_generator.generate_conversation_response(
                 topic=topic,
                 question=question,
                 conversation_history=conversation_history,
                 topic_data=topic_data,
                 tone=tone,
-                temperature=temperature
+                temperature=temperature,
+                api_key=groq_api_key
             )
             
             if not response_result.get('success', False):
+                is_quota = response_result.get('requires_custom_key') or response_result.get('llama_quota_over')
                 return jsonify({
                     "success": False,
-                    "error": response_result.get('error', 'Failed to generate response')
-                }), 500
+                    "error": response_result.get('error', 'Failed to generate response'),
+                    "llama_quota_over": is_quota,
+                    "requires_custom_key": is_quota
+                }), 402 if is_quota else 500
             
             # Return the successful response
             return jsonify({
@@ -826,20 +944,26 @@ def conversation():
 def health_check():
     """API health check endpoint with detailed status information."""
     version = "1.0.0"
-    api_status = get_all_api_statuses()
+    groq_key = get_request_groq_key()
+    api_status_res = get_all_api_statuses(groq_key=groq_key)
     response = {
         "success": True,
-        "status": api_status["overall_status"],
+        "status": api_status_res["overall_status"],
         "version": version,
-        "apis": api_status["services"],
-        "summary": api_status["summary"]
+        "apis": api_status_res["services"],
+        "groq": api_status_res.get("groq", {}),
+        "stability_ai": api_status_res.get("stability_ai", {}),
+        "wikipedia": api_status_res.get("wikipedia", {}),
+        "dbpedia": api_status_res.get("dbpedia", {}),
+        "news_api": api_status_res.get("news_api", {}),
+        "summary": api_status_res["summary"]
     }
     status_code = 200
-    if api_status["overall_status"] == "degraded":
+    if api_status_res["overall_status"] == "degraded":
         status_code = 207  # Multi-Status
-    elif api_status["overall_status"] == "incomplete":
+    elif api_status_res["overall_status"] == "incomplete":
         status_code = 424  # Failed Dependency
-    elif api_status["overall_status"] == "down":
+    elif api_status_res["overall_status"] == "down":
         status_code = 503  # Service Unavailable
     return jsonify(response), status_code
 
@@ -847,23 +971,7 @@ def health_check():
 @api_bp.route('/status', methods=['GET'])
 def api_status():
     """API status endpoint for compatibility with frontend checks (returns same as /api/health)."""
-    version = "1.0.0"
-    api_status = get_all_api_statuses()
-    response = {
-        "success": True,
-        "status": api_status["overall_status"],
-        "version": version,
-        "apis": api_status["services"],
-        "summary": api_status["summary"]
-    }
-    status_code = 200
-    if api_status["overall_status"] == "degraded":
-        status_code = 207  # Multi-Status
-    elif api_status["overall_status"] == "incomplete":
-        status_code = 424  # Failed Dependency
-    elif api_status["overall_status"] == "down":
-        status_code = 503  # Service Unavailable
-    return jsonify(response), status_code
+    return health_check()
 
 
 # Error handlers

@@ -23,7 +23,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/ScrollTrigger.min.js"></script>
 
     <!-- Favicon -->
-    <link rel="icon" href="../HOMEPAGE/HOMEPAGE/assets/Images/icons/favicon-icon.svg" type="image/svg+xml">
+    <link rel="icon" href="{{ url_for('static', filename='img/icons/favicon-icon.svg') }}" type="image/svg+xml">
     <!-- Fallback favicon for browsers that don't support SVG -->
     <link rel="alternate icon" href="{{ url_for('static', filename='img/favicon.ico') }}">
 
@@ -74,6 +74,7 @@
                 <nav class="desktop-nav">
                     <a href="https://contraai.netlify.app" class="nav-link">HOME<span></span></a>
                     <a href="/status" target="_self" class="nav-link">STATUS<span></span></a>
+                    <div id="nav-key-status" class="nav-key-container"></div>
                 </nav>
                 <button class="mobile-menu-toggle" aria-label="Toggle menu">
                     <span></span>
@@ -89,6 +90,7 @@
         <div class="mobile-nav-content">
             <a href="https://contraai.netlify.app" class="mobile-nav-link">HOME</a>
             <a href="/status" target="_self" class="mobile-nav-link">STATUS</a>
+            <div id="mobile-nav-key-status" class="mobile-nav-key-container"></div>
         </div>
     </div>
 
@@ -104,6 +106,20 @@
 
         <section class="input-section">
             <div class="container">
+                <!-- API Key Status Banner -->
+                <div id="api-key-banner" class="api-key-banner hidden">
+                    <div class="api-key-banner-content">
+                        <div class="api-key-badge-wrap">
+                            <span class="key-status-indicator pulse" id="key-status-indicator"></span>
+                            <span class="key-badge-text" id="key-badge-text">Groq LLaMA 3.3 Key</span>
+                        </div>
+                        <div class="key-status-msg" id="key-status-msg">Checking Groq API key status...</div>
+                    </div>
+                    <div class="api-key-banner-actions" id="key-banner-actions">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+
                 <h2 class="section-title reveal-text">Generate Your Experience</h2>
                 <form id="generate-form" class="animate-on-scroll">
                     <div class="form-group">
@@ -366,23 +382,39 @@
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script src="{{ url_for('static', filename='js/animations.js') }}"></script>
     <script>
-        // Add custom cursor functionality
+        // Enhanced Custom Cursor Functionality (guaranteed top layer above modals & popups)
         document.addEventListener('DOMContentLoaded', function () {
             const cursorDot = document.querySelector('.cursor-dot');
             const cursorOutline = document.querySelector('.cursor-dot-outline');
 
             if (!cursorDot || !cursorOutline) return;
 
+            // Enforce top-level visibility and click pass-through
+            cursorDot.style.pointerEvents = 'none';
+            cursorOutline.style.pointerEvents = 'none';
+            cursorDot.style.zIndex = '2147483647';
+            cursorOutline.style.zIndex = '2147483646';
+
+            // Ensure cursor elements are direct children of body so no modal parent can trap/clip them
+            if (cursorDot.parentElement !== document.body) {
+                document.body.appendChild(cursorDot);
+            }
+            if (cursorOutline.parentElement !== document.body) {
+                document.body.appendChild(cursorOutline);
+            }
+
             window.addEventListener('mousemove', function (e) {
                 cursorDot.style.opacity = '1';
                 cursorOutline.style.opacity = '1';
+                cursorDot.style.display = 'block';
+                cursorOutline.style.display = 'block';
 
                 cursorDot.style.left = e.clientX + 'px';
                 cursorDot.style.top = e.clientY + 'px';
 
                 cursorOutline.style.left = e.clientX + 'px';
                 cursorOutline.style.top = e.clientY + 'px';
-            });
+            }, { passive: true });
 
             document.addEventListener('mousedown', function () {
                 cursorDot.classList.add('cursor-expand');
@@ -394,24 +426,40 @@
                 cursorOutline.classList.remove('cursor-active');
             });
 
-            // Hide cursor when mouse leaves window
-            document.addEventListener('mouseleave', function () {
-                cursorDot.style.opacity = '0';
-                cursorOutline.style.opacity = '0';
+            // Hide only if the mouse truly exits the browser viewport
+            document.addEventListener('mouseleave', function (e) {
+                if (!e.relatedTarget && (e.clientY <= 0 || e.clientX <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight)) {
+                    cursorDot.style.opacity = '0';
+                    cursorOutline.style.opacity = '0';
+                }
             });
 
-            // Custom hover effects for links and buttons
-            const links = document.querySelectorAll('a, button, input, textarea, select');
-            links.forEach(link => {
-                link.addEventListener('mouseover', () => {
+            // Dynamic event delegation so all modal elements, inputs, and buttons get sleek custom cursor states
+            document.addEventListener('mouseover', function (e) {
+                const isInput = e.target.closest('input, textarea, select, [contenteditable], .byok-input');
+                const isClickable = e.target.closest('a, button, [role="button"], [type="button"], [type="submit"], .byok-btn, .byok-modal-close, .nav-key-chip, .btn, .btn-pull-key, .btn-change-key, .tab-link');
+                
+                if (isInput) {
+                    cursorDot.classList.add('cursor-input');
+                    cursorOutline.classList.add('cursor-input');
+                } else if (isClickable) {
                     cursorDot.classList.add('cursor-expand');
                     cursorOutline.classList.add('cursor-active');
-                });
+                }
+            });
 
-                link.addEventListener('mouseleave', () => {
+            document.addEventListener('mouseout', function (e) {
+                const isInput = e.target.closest('input, textarea, select, [contenteditable], .byok-input');
+                const isClickable = e.target.closest('a, button, [role="button"], [type="button"], [type="submit"], .byok-btn, .byok-modal-close, .nav-key-chip, .btn, .btn-pull-key, .btn-change-key, .tab-link');
+                
+                if (isInput) {
+                    cursorDot.classList.remove('cursor-input');
+                    cursorOutline.classList.remove('cursor-input');
+                }
+                if (isClickable) {
                     cursorDot.classList.remove('cursor-expand');
                     cursorOutline.classList.remove('cursor-active');
-                });
+                }
             });
         });
 
@@ -472,6 +520,103 @@
             }
         });
     </script>
+
+    <!-- ============================================== -->
+    <!-- BYOK (BRING YOUR OWN KEY) MODAL POP-UP -->
+    <!-- ============================================== -->
+    <div id="byok-modal" class="byok-modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="byok-title">
+        <div class="byok-modal-card">
+            <button type="button" class="byok-modal-close" id="byok-close-btn" aria-label="Close modal" title="Close">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <div class="byok-modal-header">
+                <div class="byok-icon-badge">
+                    <i class="fas fa-key"></i>
+                </div>
+                <h2 id="byok-title" class="byok-title">Bring Your Own Key</h2>
+                <p class="byok-subtitle">
+                    The project's Groq LLaMA API quota has been reached. Please bring your own Groq API key to test and use CONTRA.
+                </p>
+            </div>
+
+            <div class="byok-modal-body">
+                <!-- Reference Link & Instructions Card -->
+                <div class="byok-guide-card">
+                    <div class="byok-guide-head">
+                        <div class="byok-guide-brand">
+                            <i class="fas fa-bolt"></i>
+                            <span>Groq Platform &bull; LLaMA 3.3</span>
+                        </div>
+                        <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer" class="byok-ext-link" id="groq-ref-link">
+                            <span>Open Groq Console</span>
+                            <i class="fas fa-external-link-alt"></i>
+                        </a>
+                    </div>
+                    <div class="byok-guide-steps">
+                        <div class="byok-step">
+                            <span class="step-badge">1</span>
+                            <span>Click <a href="https://console.groq.com/keys" target="_blank" rel="noopener noreferrer">console.groq.com/keys</a> to visit Groq platform.</span>
+                        </div>
+                        <div class="byok-step">
+                            <span class="step-badge">2</span>
+                            <span>Sign up or log in (free) and click <strong>"Create API Key"</strong>.</span>
+                        </div>
+                        <div class="byok-step">
+                            <span class="step-badge">3</span>
+                            <span>Copy your key (starts with <code>gsk_</code>) and paste it below to unlock the project.</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Key Input Form -->
+                <form id="byok-form" onsubmit="return false;">
+                    <div class="byok-input-group">
+                        <label for="byok-api-key-input">Enter Groq API Key (LLaMA 3.3)</label>
+                        <div class="byok-input-wrapper">
+                            <i class="fas fa-shield-alt input-prefix-icon"></i>
+                            <input type="password" id="byok-api-key-input" name="groq_key" placeholder="gsk_xxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off" spellcheck="false" required>
+                            <button type="button" id="byok-toggle-show" class="byok-toggle-show" title="Show or hide API key">
+                                <i class="fas fa-eye" id="byok-eye-icon"></i>
+                            </button>
+                        </div>
+                        <div id="byok-alert" class="byok-alert hidden"></div>
+                    </div>
+
+                    <div class="byok-footer">
+                        <button type="submit" id="byok-submit-btn" class="btn btn-primary byok-submit-btn">
+                            <span class="btn-text">Validate & Unlock Project</span>
+                            <span class="btn-spinner hidden"><i class="fas fa-spinner fa-spin"></i></span>
+                        </button>
+                    </div>
+                </form>
+
+                <div class="byok-note">
+                    <i class="fas fa-lock"></i>
+                    <span>Your API key is stored safely in your browser session only. You can pull (take out) your key anytime via the <strong>Pull API Key</strong> option on the dashboard.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- PULL API KEY CONFIRMATION MODAL -->
+    <!-- ============================================== -->
+    <div id="pull-key-modal" class="byok-modal-overlay hidden" role="dialog" aria-modal="true">
+        <div class="byok-modal-card pull-modal-card">
+            <div class="pull-modal-icon">
+                <i class="fas fa-eject"></i>
+            </div>
+            <h3 class="pull-modal-title">Pull Out Your API Key?</h3>
+            <p class="pull-modal-desc">
+                This will take out and clear your Groq API key from this browser. The project will be locked until a key is entered again.
+            </p>
+            <div class="pull-modal-actions">
+                <button type="button" id="cancel-pull-btn" class="btn btn-secondary">Cancel</button>
+                <button type="button" id="confirm-pull-btn" class="btn btn-danger">Yes, Pull API Key</button>
+            </div>
+        </div>
+    </div>
 </body>
 
 </html>

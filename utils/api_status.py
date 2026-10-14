@@ -1,35 +1,42 @@
 """
-API Status utility for monitoring the health of all external APIs
+API Status utility for monitoring the health of all external APIs and services
 used in the CONTRA application.
 """
 
 import os
 import requests
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import logging
 
 from config import APIConfig
-from services.groq_client import GroqClient
+from services.wikipedia_service import wikipedia_service
+from services.dbpedia_service import dbpedia_service
 
 logger = logging.getLogger(__name__)
 
-def check_groq_api() -> Dict[str, Any]:
+def check_groq_api(api_key: Optional[str] = None) -> Dict[str, Any]:
     """Check if Groq API key is configured and working."""
     result = {
+        "id": "groq",
         "name": "Groq LLaMA API",
         "status": "unknown",
+        "available": False,
+        "quota_over": False,
         "message": ""
     }
     
-    if not APIConfig.GROQ_API_KEY or APIConfig.GROQ_API_KEY == "dummy_key_replace_with_real_one":
+    key = (api_key or APIConfig.GROQ_API_KEY or '').strip()
+    if not key or key in ("dummy_key_replace_with_real_one", "your_groq_api_key_here"):
         result["status"] = "missing"
-        result["message"] = "API key not configured. Update GROQ_API_KEY in .env file."
+        result["available"] = False
+        result["quota_over"] = True
+        result["message"] = "Groq LLaMA API key not configured. Bring your own Groq API key to test."
         return result
     
     try:
         # Test a simple completion request
         headers = {
-            "Authorization": f"Bearer {APIConfig.GROQ_API_KEY}",
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
         
@@ -37,9 +44,9 @@ def check_groq_api() -> Dict[str, Any]:
             "model": APIConfig.GROQ_MODEL,
             "messages": [
                 {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": "Hello, are you working?"}
+                {"role": "user", "content": "ping"}
             ],
-            "max_tokens": 10
+            "max_tokens": 5
         }
         
         response = requests.post(
@@ -51,13 +58,26 @@ def check_groq_api() -> Dict[str, Any]:
         
         if response.status_code == 200:
             result["status"] = "ok"
-            result["message"] = "API connection successful."
+            result["available"] = True
+            result["message"] = f"API connection successful ({APIConfig.GROQ_MODEL})."
+        elif response.status_code in (401, 403):
+            result["status"] = "error"
+            result["available"] = False
+            result["quota_over"] = True
+            result["message"] = "Invalid Groq API key or unauthorized."
+        elif response.status_code == 429:
+            result["status"] = "error"
+            result["available"] = False
+            result["quota_over"] = True
+            result["message"] = "Groq LLaMA API quota or rate limit exceeded."
         else:
             result["status"] = "error"
-            result["message"] = f"API error: {response.status_code} - {response.text}"
+            result["available"] = False
+            result["message"] = f"API error: {response.status_code} - {response.text[:100]}"
     
     except Exception as e:
         result["status"] = "error"
+        result["available"] = False
         result["message"] = f"Connection error: {str(e)}"
     
     return result
@@ -65,39 +85,42 @@ def check_groq_api() -> Dict[str, Any]:
 def check_stable_diffusion() -> Dict[str, Any]:
     """Check if Stability AI API key is configured and working."""
     result = {
+        "id": "stability_ai",
         "name": "Stability AI API",
         "status": "unknown",
         "message": ""
     }
     
-    if not APIConfig.STABILITY_API_KEY or APIConfig.STABILITY_API_KEY == "":
+    key = (APIConfig.STABILITY_API_KEY or '').strip()
+    if not key or key in ("your_stability_api_key_here", "dummy_key_replace_with_real_one"):
         result["status"] = "missing"
-        result["message"] = "API key not configured. Update STABILITY_API_KEY in .env file."
+        result["message"] = "API key not configured in .env. Built-in fallback art generator is active."
         return result
     
     try:
-        # Create API endpoint for models list
+        # Create API endpoint for engines list
         api_url = "https://api.stability.ai/v1/engines/list"
         
-        # Setup headers for Stability API
         headers = {
-            "Authorization": f"Bearer {APIConfig.STABILITY_API_KEY}",
+            "Authorization": f"Bearer {key}",
             "Content-Type": "application/json"
         }
         
-        # Test connection to API
         response = requests.get(
             api_url,
             headers=headers,
-            timeout=10
+            timeout=8
         )
         
         if response.status_code == 200:
             result["status"] = "ok"
-            result["message"] = "API connection successful."
+            result["message"] = "Stability AI connection successful."
+        elif response.status_code in (401, 403):
+            result["status"] = "error"
+            result["message"] = "Stability AI unauthorized or invalid key. Fallback art generator active."
         else:
             result["status"] = "error"
-            result["message"] = f"API error: {response.status_code} - {response.text}"
+            result["message"] = f"Stability AI error: {response.status_code}."
     
     except Exception as e:
         result["status"] = "error"
@@ -105,49 +128,94 @@ def check_stable_diffusion() -> Dict[str, Any]:
     
     return result
 
-def check_news_api() -> Dict[str, Any]:
-    """Check if News API key is configured and working."""
+def check_wikipedia() -> Dict[str, Any]:
+    """Check if Wikipedia service is available and responding."""
     result = {
-        "name": "News API",
+        "id": "wikipedia",
+        "name": "Wikipedia Service",
         "status": "unknown",
         "message": ""
     }
     
-    if not APIConfig.NEWS_API_KEY or APIConfig.NEWS_API_KEY == "dummy_key_replace_with_real_one":
-        result["status"] = "missing"
-        result["message"] = "API key not configured. Update NEWS_API_KEY in .env file."
-        return result
+    try:
+        summary_res = wikipedia_service.get_summary("Artificial Intelligence")
+        if summary_res.get("success"):
+            result["status"] = "ok"
+            result["message"] = "Wikipedia service operational and connected."
+        else:
+            result["status"] = "error"
+            result["message"] = summary_res.get("error", "Wikipedia query failed.")
+    except Exception as e:
+        result["status"] = "error"
+        result["message"] = f"Wikipedia service error: {str(e)}"
+        
+    return result
+
+def check_dbpedia() -> Dict[str, Any]:
+    """Check if DBpedia SPARQL service is operational."""
+    result = {
+        "id": "dbpedia",
+        "name": "DBpedia Service",
+        "status": "unknown",
+        "message": ""
+    }
     
     try:
-        # Use the gnews library to check if we can fetch news
-        from gnews import GNews
+        res = dbpedia_service.get_data("Science")
+        if res.get("success"):
+            result["status"] = "ok"
+            result["message"] = "DBpedia SPARQL endpoint operational."
+        else:
+            result["status"] = "error"
+            result["message"] = res.get("error", "DBpedia service unavailable.")
+    except Exception as e:
+        result["status"] = "error"
+        result["message"] = f"DBpedia connection error: {str(e)}"
         
+    return result
+
+def check_news_api() -> Dict[str, Any]:
+    """Check if News service is configured and working."""
+    result = {
+        "id": "news_api",
+        "name": "News Service",
+        "status": "unknown",
+        "message": ""
+    }
+    
+    try:
+        from gnews import GNews
         gnews = GNews()
         gnews.max_results = 1
         gnews.language = 'en'
-        
-        # Try to get a single news article as a test
-        articles = gnews.get_news('test')
+        articles = gnews.get_news('technology')
         
         if articles:
             result["status"] = "ok"
-            result["message"] = "API connection successful."
+            result["message"] = "News service operational and retrieving feeds."
         else:
             result["status"] = "error"
-            result["message"] = "No articles returned from API."
-    
+            result["message"] = "No news articles returned from feed."
     except Exception as e:
         result["status"] = "error"
-        result["message"] = f"Connection error: {str(e)}"
+        result["message"] = f"News service error: {str(e)}"
     
     return result
 
-def get_all_api_statuses() -> Dict[str, Any]:
-    """Get the status of all external APIs."""
+def get_all_api_statuses(groq_key: Optional[str] = None) -> Dict[str, Any]:
+    """Get the status of all external services and APIs."""
+    groq_status = check_groq_api(api_key=groq_key)
+    stability_status = check_stable_diffusion()
+    wikipedia_status = check_wikipedia()
+    dbpedia_status = check_dbpedia()
+    news_status = check_news_api()
+    
     services = [
-        check_groq_api(),
-        check_stable_diffusion(),
-        check_news_api()
+        groq_status,
+        stability_status,
+        wikipedia_status,
+        dbpedia_status,
+        news_status
     ]
     
     # Count services by status
@@ -168,6 +236,11 @@ def get_all_api_statuses() -> Dict[str, Any]:
     return {
         "overall_status": overall_status,
         "services": services,
+        "groq": groq_status,
+        "stability_ai": stability_status,
+        "wikipedia": wikipedia_status,
+        "dbpedia": dbpedia_status,
+        "news_api": news_status,
         "summary": {
             "total": len(services),
             "ok": status_counts["ok"],
@@ -175,4 +248,4 @@ def get_all_api_statuses() -> Dict[str, Any]:
             "missing": status_counts["missing"],
             "unknown": status_counts["unknown"]
         }
-    } 
+    }

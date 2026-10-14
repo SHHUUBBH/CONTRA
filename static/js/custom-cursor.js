@@ -4,18 +4,9 @@
  */
 
 function initCursor() {
-  // Force cursor hiding at the document level to ensure maximum compatibility
-  document.documentElement.style.cursor = 'none';
-  document.body.style.cursor = 'none';
-  
-  // Create global style for any dynamically added elements
-  const styleElement = document.createElement('style');
-  styleElement.textContent = `
-    * {
-      cursor: none !important;
-    }
-  `;
-  document.head.appendChild(styleElement);
+  // Ensure cursor elements exist in the DOM
+  const cursorDot = document.querySelector('.cursor-dot');
+  const cursorOutline = document.querySelector('.cursor-dot-outline');
   
   // Ensure cursor elements exist in the DOM
   const cursorDot = document.querySelector('.cursor-dot');
@@ -42,12 +33,12 @@ function initCursor() {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background-color: rgba(139, 92, 246, 0.5);
+      background-color: rgba(168, 85, 247, 0.5);
       pointer-events: none;
-      z-index: 9998;
+      z-index: 2147483646;
       opacity: ${0.7 - (i * 0.15)};
       transition: opacity 0.3s ease;
-      mix-blend-mode: screen;
+      mix-blend-mode: normal;
       transform: translate(-50%, -50%);
     `;
     document.body.appendChild(trail);
@@ -121,11 +112,11 @@ function initCursor() {
       width: 40px;
       height: 40px;
       border-radius: 50%;
-      border: 2px solid rgba(139, 92, 246, 0.8);
+      border: 2px solid rgba(168, 85, 247, 0.8);
       transform: translate(-50%, -50%) scale(0);
       opacity: 1;
       pointer-events: none;
-      z-index: 9997;
+      z-index: 2147483645;
       animation: rippleEffect 0.6s ease-out forwards;
     `;
     document.body.appendChild(ripple);

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="logoGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6C15FF" />
+      <stop offset="50%" stop-color="#3E8EFF" />
+      <stop offset="100%" stop-color="#00BFFF" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Black background -->
+  <rect width="512" height="512" fill="#000000" />
+  
+  <!-- Circular logo -->
+  <g transform="translate(156, 120)">
+    <!-- Outer circle -->
+    <circle cx="100" cy="100" r="100" fill="none" stroke="url(#logoGradient)" stroke-width="16" />
+    
+    <!-- Inner segments -->
+    <path d="M100,20 A80,80 0 0,1 180,100 L150,100 A50,50 0 0,0 100,50 Z" fill="url(#logoGradient)" />
+    <path d="M180,100 A80,80 0 0,1 100,180 L100,150 A50,50 0 0,0 150,100 Z" fill="url(#logoGradient)" />
+    <path d="M100,180 A80,80 0 0,1 20,100 L50,100 A50,50 0 0,0 100,150 Z" fill="url(#logoGradient)" />
+    
+    <!-- Center circle -->
+    <circle cx="100" cy="100" r="20" fill="url(#logoGradient)" />
+  </g>
+  
+  <!-- CONTRA text -->
+  <text x="256" y="380" font-family="Arial, sans-serif" font-weight="bold" font-size="80" text-anchor="middle" fill="url(#logoGradient)">CONTRA</text>
+</svg> 

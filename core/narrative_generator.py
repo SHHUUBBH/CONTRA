@@ -32,7 +32,8 @@ class NarrativeGenerator:
         tone: str = None,
         max_tokens: int = None,
         temperature: float = None,
-        expertise_level: str = "intermediate"
+        expertise_level: str = "intermediate",
+        api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate a narrative about a topic using available data.
@@ -43,6 +44,7 @@ class NarrativeGenerator:
             max_tokens: Maximum tokens to generate
             temperature: Sampling temperature (0.0-1.0)
             expertise_level: Target audience expertise level (beginner, intermediate, advanced)
+            api_key: Optional custom Groq API key
             
         Returns:
             Dictionary with generated narrative and metadata
@@ -78,7 +80,8 @@ class NarrativeGenerator:
         result = groq_client.generate_text(
             prompt=prompt,
             max_tokens=max_tokens,
-            temperature=temperature
+            temperature=temperature,
+            api_key=api_key
         )
         
         if not result.get("success", False):
@@ -86,6 +89,9 @@ class NarrativeGenerator:
             return {
                 "success": False,
                 "error": result.get("error", "Unknown error generating narrative"),
+                "requires_custom_key": result.get("requires_custom_key", False),
+                "llama_quota_over": result.get("llama_quota_over", False),
+                "status_code": result.get("status_code"),
                 "processing_time": format_time_elapsed(elapsed_time)
             }
         
@@ -358,7 +364,8 @@ class NarrativeGenerator:
         style: str = "short story",
         genre: Optional[str] = None,
         max_tokens: int = None,
-        temperature: float = None
+        temperature: float = None,
+        api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate a creative story based on the topic data.
@@ -369,6 +376,7 @@ class NarrativeGenerator:
             genre: Optional genre (e.g., "mystery", "science fiction")
             max_tokens: Maximum tokens to generate
             temperature: Creativity level (0.1-1.0, higher = more creative)
+            api_key: Optional custom Groq API key
             
         Returns:
             Dictionary with generated story and metadata
@@ -422,7 +430,8 @@ class NarrativeGenerator:
         result = groq_client.generate_text(
             prompt=prompt,
             max_tokens=max_tokens,
-            temperature=temperature
+            temperature=temperature,
+            api_key=api_key
         )
         
         if not result.get("success", False):
@@ -430,6 +439,8 @@ class NarrativeGenerator:
             return {
                 "success": False,
                 "error": result.get("error", "Unknown error generating story"),
+                "requires_custom_key": result.get("requires_custom_key", False),
+                "llama_quota_over": result.get("llama_quota_over", False),
                 "processing_time": format_time_elapsed(elapsed_time)
             }
         
@@ -443,12 +454,13 @@ class NarrativeGenerator:
             "processing_time": format_time_elapsed(elapsed_time)
         }
     
-    def analyze_sentiment(self, topic_data: TopicData) -> Dict[str, Any]:
+    def analyze_sentiment(self, topic_data: TopicData, api_key: Optional[str] = None) -> Dict[str, Any]:
         """
         Analyze the sentiment around a topic based on available data.
         
         Args:
             topic_data: Normalized topic data
+            api_key: Optional custom Groq API key
             
         Returns:
             Dictionary with sentiment analysis
@@ -482,12 +494,14 @@ class NarrativeGenerator:
                  "Is it mostly positive, negative, or neutral? Provide a brief explanation and key points."
         
         # Get structured output
-        result = groq_client.parse_structured_output(prompt, output_format)
+        result = groq_client.parse_structured_output(prompt, output_format, api_key=api_key)
         
         if not result.get("success", False):
             return {
                 "success": False,
-                "error": result.get("error", "Unknown error analyzing sentiment")
+                "error": result.get("error", "Unknown error analyzing sentiment"),
+                "requires_custom_key": result.get("requires_custom_key", False),
+                "llama_quota_over": result.get("llama_quota_over", False)
             }
         
         return {
@@ -502,7 +516,8 @@ class NarrativeGenerator:
         conversation_history: List[Dict[str, str]],
         topic_data: Optional[TopicData] = None,
         tone: str = "informative",
-        temperature: float = None
+        temperature: float = None,
+        api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate a conversational response to a user question about a topic.
@@ -514,6 +529,7 @@ class NarrativeGenerator:
             topic_data: Optional topic data for additional context
             tone: Tone to use for response generation
             temperature: Creativity level (0.1-1.0, higher = more creative)
+            api_key: Optional custom Groq API key
             
         Returns:
             Dictionary with response text and metadata
@@ -586,13 +602,16 @@ class NarrativeGenerator:
             result = llm_client.generate_text(
                 prompt=prompt,
                 max_tokens=ContentConfig.CONVERSATION_MAX_TOKENS,
-                temperature=temperature
+                temperature=temperature,
+                api_key=api_key
             )
             
             if not result.get("success", False):
                 return {
                     "success": False,
-                    "error": result.get("error", "Failed to generate response")
+                    "error": result.get("error", "Failed to generate response"),
+                    "requires_custom_key": result.get("requires_custom_key", False),
+                    "llama_quota_over": result.get("llama_quota_over", False)
                 }
             
             response_text = result.get("text", "").strip()

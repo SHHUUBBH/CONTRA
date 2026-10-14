@@ -3,14 +3,24 @@ DBpedia service for accessing structured knowledge via SPARQL queries.
 """
 
 import logging
+import urllib.parse
 from typing import Dict, List, Any, Optional
-from SPARQLWrapper import SPARQLWrapper, JSON, SPARQLExceptions
+
+try:
+    from SPARQLWrapper import SPARQLWrapper, JSON, SPARQLExceptions
+    HAS_SPARQL = True
+except ImportError:
+    HAS_SPARQL = False
+    SPARQLWrapper = None
+    JSON = None
+    SPARQLExceptions = None
 
 from utils.cache import disk_cache
 from utils.helpers import clean_text
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
 
 class DBpediaService:
     """
@@ -26,10 +36,13 @@ class DBpediaService:
             endpoint: SPARQL endpoint URL
         """
         self.endpoint = endpoint
-        self.sparql = SPARQLWrapper(endpoint)
-        self.sparql.setReturnFormat(JSON)
-        # Add timeout to prevent hanging on slow connections
-        self.sparql.setTimeout(10)  # 10 seconds timeout
+        if HAS_SPARQL and SPARQLWrapper:
+            self.sparql = SPARQLWrapper(endpoint)
+            self.sparql.setReturnFormat(JSON)
+            # Add timeout to prevent hanging on slow connections
+            self.sparql.setTimeout(8)  # 8 seconds timeout
+        else:
+            self.sparql = None
     
     @disk_cache(subdir='dbpedia')
     def get_data(self, topic: str) -> Dict[str, Any]:
@@ -44,6 +57,15 @@ class DBpediaService:
         """
         logger.info(f"Fetching DBpedia data for: {topic}")
         
+        if not self.sparql:
+            return {
+                "success": False,
+                "error": "SPARQL service not initialized.",
+                "abstract": "",
+                "categories": [],
+                "types": []
+            }
+        
         try:
             # First find the resource URI
             resource_uri = self._find_resource_uri(topic)
@@ -51,7 +73,10 @@ class DBpediaService:
                 logger.warning(f"No DBpedia entry found for '{topic}'")
                 return {
                     "success": False,
-                    "error": f"No DBpedia entry found for '{topic}'."
+                    "error": f"No DBpedia entry found for '{topic}'.",
+                    "abstract": "",
+                    "categories": [],
+                    "types": []
                 }
             
             # Then fetch detailed data
@@ -60,45 +85,20 @@ class DBpediaService:
             data["success"] = True
             return data
             
-        except SPARQLExceptions.EndPointInternalError as e:
-            logger.error(f"DBpedia endpoint internal error: {str(e)}")
-            return {
-                "success": False,
-                "error": f"DBpedia service is experiencing issues.",
-                "details": str(e)
-            }
-        except SPARQLExceptions.QueryBadFormed as e:
-            logger.error(f"DBpedia query syntax error: {str(e)}")
-            return {
-                "success": False,
-                "error": f"Invalid query for DBpedia service.",
-                "details": str(e)
-            }
-        except SPARQLExceptions.EndPointNotFound as e:
-            logger.error(f"DBpedia endpoint not found: {str(e)}")
-            return {
-                "success": False,
-                "error": f"DBpedia service is currently unavailable.",
-                "details": str(e)
-            }
-        except SPARQLExceptions.Unauthorized as e:
-            logger.error(f"DBpedia unauthorized: {str(e)}")
-            return {
-                "success": False,
-                "error": f"Unauthorized access to DBpedia service.",
-                "details": str(e)
-            }
         except Exception as e:
             logger.error(f"DBpedia query failed: {str(e)}")
             return {
                 "success": False,
                 "error": f"DBpedia query failed.",
-                "details": str(e)
+                "details": str(e),
+                "abstract": "",
+                "categories": [],
+                "types": []
             }
     
     def _find_resource_uri(self, topic: str) -> Optional[str]:
         """
-        Find the DBpedia resource URI for a given topic.
+        Find the DBpedia resource URI for a given topic quickly without full-table scans.
         
         Args:
             topic: Topic name/keyword
@@ -106,45 +106,65 @@ class DBpediaService:
         Returns:
             Resource URI or None if not found
         """
-        # Escape quotes in the topic for the SPARQL query
-        topic_safe = topic.replace('"', '\\"')
+        if not self.sparql or not topic or not topic.strip():
+            return None
+
+        # Clean topic and produce candidate resource names
+        cleaned_topic = topic.strip()
+        safe_candidates = [
+            cleaned_topic.replace(' ', '_'),
+            cleaned_topic.capitalize().replace(' ', '_'),
+            cleaned_topic.title().replace(' ', '_')
+        ]
+        # Remove duplicates while preserving order
+        candidates = list(dict.fromkeys(safe_candidates))
         
-        # Query to find resource by English label
-        query = f"""
+        # 1. Quick check: check candidate URIs directly (including Wikipedia redirects)
+        for cand in candidates:
+            cand_uri = f"http://dbpedia.org/resource/{urllib.parse.quote(cand)}"
+            try:
+                # Check for redirects first
+                redirect_query = f"""
+                PREFIX dbo: <http://dbpedia.org/ontology/>
+                SELECT ?redirect WHERE {{
+                  <{cand_uri}> dbo:wikiPageRedirects ?redirect .
+                }} LIMIT 1
+                """
+                self.sparql.setQuery(redirect_query)
+                res = self.sparql.query().convert()
+                bindings = res.get("results", {}).get("bindings", [])
+                if bindings and 'redirect' in bindings[0]:
+                    return bindings[0]['redirect']['value']
+
+                # Check if candidate exists directly
+                ask_query = f"ASK {{ <{cand_uri}> ?p ?o }}"
+                self.sparql.setQuery(ask_query)
+                ask_res = self.sparql.query().convert()
+                if ask_res.get('boolean') is True:
+                    return cand_uri
+            except Exception as e:
+                logger.debug(f"Candidate check failed for {cand_uri}: {e}")
+
+        # 2. Query to find resource by exact English label
+        topic_safe = cleaned_topic.replace('"', '\\"')
+        label_query = f"""
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         SELECT ?resource WHERE {{
-          ?resource rdfs:label "{topic_safe}"@en .
+          {{ ?resource rdfs:label "{topic_safe}"@en }}
+          UNION
+          {{ ?resource rdfs:label "{topic_safe.capitalize()}"@en }}
+          UNION
+          {{ ?resource rdfs:label "{topic_safe.title()}"@en }}
         }} LIMIT 1
         """
-        
-        # Try exact match first
-        self.sparql.setQuery(query)
         try:
+            self.sparql.setQuery(label_query)
             results = self.sparql.query().convert()
             bindings = results.get("results", {}).get("bindings", [])
-            
-            if bindings:
+            if bindings and 'resource' in bindings[0]:
                 return bindings[0]['resource']['value']
-                
-            # If no exact match, try a more flexible search
-            query = f"""
-            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-            SELECT ?resource ?label WHERE {{
-              ?resource rdfs:label ?label .
-              FILTER(LANG(?label) = 'en') .
-              FILTER(REGEX(?label, "{topic_safe}", "i")) .
-            }} LIMIT 5
-            """
-            
-            self.sparql.setQuery(query)
-            results = self.sparql.query().convert()
-            bindings = results.get("results", {}).get("bindings", [])
-            
-            if bindings:
-                return bindings[0]['resource']['value']
-                
         except Exception as e:
-            logger.error(f"Error finding DBpedia resource: {str(e)}")
+            logger.warning(f"Label query failed for DBpedia: {e}")
         
         return None
     
@@ -158,19 +178,19 @@ class DBpediaService:
         Returns:
             Dictionary with abstract, categories, etc.
         """
-        # Query for abstract and categories
         query = f"""
         PREFIX dbo: <http://dbpedia.org/ontology/>
         PREFIX dct: <http://purl.org/dc/terms/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         
         SELECT 
-          ?abstract 
+          ?abstract ?comment ?desc
           (GROUP_CONCAT(DISTINCT ?cat; separator="; ") AS ?categories)
           (GROUP_CONCAT(DISTINCT ?type; separator="; ") AS ?types)
         WHERE {{
-          <{resource_uri}> dbo:abstract ?abstract .
-          FILTER(LANG(?abstract) = 'en') .
+          OPTIONAL {{ <{resource_uri}> dbo:abstract ?abstract . FILTER(LANG(?abstract) = 'en') }}
+          OPTIONAL {{ <{resource_uri}> rdfs:comment ?comment . FILTER(LANG(?comment) = 'en') }}
+          OPTIONAL {{ <{resource_uri}> dbo:description ?desc . FILTER(LANG(?desc) = 'en') }}
           
           # Get categories
           OPTIONAL {{ 
@@ -188,35 +208,43 @@ class DBpediaService:
         }}
         """
         
-        self.sparql.setQuery(query)
-        results = self.sparql.query().convert()
-        bindings = results.get("results", {}).get("bindings", [])
-        
-        if not bindings:
-            return {"abstract": None, "categories": [], "types": []}
-        
-        # Extract data
-        data = bindings[0]
-        abstract = data.get('abstract', {}).get('value', '') if 'abstract' in data else ''
-        
-        # Parse categories and types
-        categories = []
-        if 'categories' in data and data['categories'].get('value'):
-            # Split the concatenated string and clean category names
-            cats_raw = data['categories']['value'].split('; ')
-            categories = [clean_text(cat) for cat in cats_raw if cat]
-        
-        types = []
-        if 'types' in data and data['types'].get('value'):
-            # Split the concatenated string and clean type names
-            types_raw = data['types']['value'].split('; ')
-            types = [clean_text(type_) for type_ in types_raw if type_]
-        
-        return {
-            "abstract": clean_text(abstract),
-            "categories": categories,
-            "types": types
-        }
+        try:
+            self.sparql.setQuery(query)
+            results = self.sparql.query().convert()
+            bindings = results.get("results", {}).get("bindings", [])
+            
+            if not bindings:
+                return {"abstract": "", "categories": [], "types": []}
+            
+            data = bindings[0]
+            # Prioritize full abstract, then comment, then short description
+            abstract = ""
+            if 'abstract' in data and data['abstract'].get('value'):
+                abstract = data['abstract']['value']
+            elif 'comment' in data and data['comment'].get('value'):
+                abstract = data['comment']['value']
+            elif 'desc' in data and data['desc'].get('value'):
+                abstract = data['desc']['value']
+            
+            # Parse categories and types
+            categories = []
+            if 'categories' in data and data['categories'].get('value'):
+                cats_raw = data['categories']['value'].split('; ')
+                categories = [clean_text(cat) for cat in cats_raw if cat]
+            
+            types = []
+            if 'types' in data and data['types'].get('value'):
+                types_raw = data['types']['value'].split('; ')
+                types = [clean_text(type_) for type_ in types_raw if type_]
+            
+            return {
+                "abstract": clean_text(abstract),
+                "categories": categories,
+                "types": types
+            }
+        except Exception as e:
+            logger.error(f"Error fetching DBpedia resource data: {e}")
+            return {"abstract": "", "categories": [], "types": []}
     
     @disk_cache(subdir='dbpedia')
     def get_related_entities(self, resource_uri: str, limit: int = 5) -> List[Dict[str, Any]]:
@@ -230,6 +258,9 @@ class DBpediaService:
         Returns:
             List of related entities with their labels and types
         """
+        if not self.sparql or not resource_uri:
+            return []
+
         query = f"""
         PREFIX dbo: <http://dbpedia.org/ontology/>
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -239,12 +270,12 @@ class DBpediaService:
             <{resource_uri}> ?relation ?entity .
             ?entity rdfs:label ?label .
             FILTER(LANG(?label) = 'en') .
-            FILTER(REGEX(STR(?relation), "^http://dbpedia.org/ontology/")) .
+            FILTER(STRSTARTS(STR(?relation), "http://dbpedia.org/ontology/")) .
           }} UNION {{
             ?entity ?relation <{resource_uri}> .
             ?entity rdfs:label ?label .
             FILTER(LANG(?label) = 'en') .
-            FILTER(REGEX(STR(?relation), "^http://dbpedia.org/ontology/")) .
+            FILTER(STRSTARTS(STR(?relation), "http://dbpedia.org/ontology/")) .
           }}
         }} LIMIT {limit}
         """
@@ -259,8 +290,6 @@ class DBpediaService:
                 label = binding.get('label', {}).get('value', '')
                 entity_uri = binding.get('entity', {}).get('value', '')
                 relation = binding.get('relation', {}).get('value', '')
-                
-                # Extract relation name from URI
                 relation_name = relation.split('/')[-1] if '/' in relation else relation
                 
                 entities.append({
@@ -277,4 +306,4 @@ class DBpediaService:
 
 
 # Create a singleton instance
-dbpedia_service = DBpediaService() 
+dbpedia_service = DBpediaService()
