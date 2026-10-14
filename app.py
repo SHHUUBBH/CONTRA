@@ -498,7 +498,8 @@ def generate():
                     narrative_text=narrative_text,
                     num_variants=variants,
                     tone=tone,
-                    temperature=temperature
+                    temperature=temperature,
+                    api_key=groq_api_key
                 )
                 
                 if image_result and image_result.get('success', False):

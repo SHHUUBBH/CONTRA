@@ -15,6 +15,18 @@ from utils.helpers import format_time_elapsed, truncate_text, iso_now
 # Configure logging
 logger = logging.getLogger(__name__)
 
+# An explicit tone locks the art style, so the images match what the user picked
+# (e.g. "humorous" -> cartoon). "informative" is deliberately absent: for it the topic
+# decides the style (LLM or keyword rules).
+TONE_STYLE_MAP = {
+    "dramatic": ("cinematic", "intense"),
+    "poetic": ("artistic", "contemplative"),
+    "humorous": ("cartoon", "playful"),
+    "technical": ("digital art", "precise"),
+    "simple": ("minimalist", "calm"),
+}
+
+
 class ImageGenerator:
     """
     Generates images using Stable Diffusion based on topic data.
@@ -36,7 +48,8 @@ class ImageGenerator:
         context: Optional[str] = None,
         tone: Optional[str] = None,
         temperature: float = None,
-        overwrite_cache: bool = False
+        overwrite_cache: bool = False,
+        api_key: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Generate images for a topic using available data.
@@ -53,6 +66,7 @@ class ImageGenerator:
             tone: Narrative tone (e.g., "informative", "dramatic", "poetic") to match image style
             temperature: Creativity level for image generation (0.1-1.0)
             overwrite_cache: Whether to force recreation of images
+            api_key: Optional custom Groq API key (used for the style analysis step)
             
         Returns:
             Dictionary with generated images and metadata
@@ -108,7 +122,7 @@ class ImageGenerator:
             context_text = narrative_text
         
         # Automatically determine style and emotion based on the topic, context and tone
-        style, emotion = self._analyze_topic_for_style_and_emotion(topic_data.topic, context_text, tone)
+        style, emotion = self._analyze_topic_for_style_and_emotion(topic_data.topic, context_text, tone, api_key=api_key)
         
         logger.info(f"Generating images for topic: {topic_data.topic} (tone={tone}, style={style}, emotion={emotion}, variants={num_variants}, temperature={temperature})")
         
@@ -163,7 +177,8 @@ class ImageGenerator:
                 height=height,
                 num_variants=num_variants,
                 overwrite_cache=overwrite_cache,
-                topic_id=topic_id  # Pass the topic ID to avoid mixing images from different topics
+                topic_id=topic_id,  # Pass the topic ID to avoid mixing images from different topics
+                style=style  # Drives Stability's style_preset and the style-aware negative prompt
             )
             
             if not result or any(not r.get("success", False) for r in result):
@@ -268,7 +283,7 @@ class ImageGenerator:
                 "topic_id": topic_id
             }
     
-    def _analyze_topic_for_style_and_emotion(self, topic: str, context_text: str, tone: Optional[str] = None) -> Tuple[str, Optional[str]]:
+    def _analyze_topic_for_style_and_emotion(self, topic: str, context_text: str, tone: Optional[str] = None, api_key: Optional[str] = None) -> Tuple[str, Optional[str]]:
         """
         Analyze the topic and context to determine the most appropriate art style and emotion.
         
@@ -280,20 +295,26 @@ class ImageGenerator:
         Returns:
             Tuple of (style, emotion)
         """
+        # An explicit tone (humorous, dramatic, ...) decides the style, so the images
+        # always match the chosen tone, even when the LLM is available.
+        tone_key = (tone or "").lower().strip()
+        if tone_key in TONE_STYLE_MAP:
+            return TONE_STYLE_MAP[tone_key]
+        
         # Use LLaMA if available, otherwise use rule-based approach
         try:
             from services.groq_client import groq_client
             
             # Try to use LLaMA for more intelligent analysis
-            if groq_client.api_key:
-                return self._analyze_with_llama(topic, context_text, tone)
+            if groq_client.api_key or api_key:
+                return self._analyze_with_llama(topic, context_text, tone, api_key=api_key)
         except Exception as e:
             logger.warning(f"Could not use LLaMA for style analysis: {e}")
         
         # Fallback to rule-based approach
         return self._analyze_with_rules(topic, context_text, tone)
     
-    def _analyze_with_llama(self, topic: str, context_text: str, tone: Optional[str] = None) -> Tuple[str, Optional[str]]:
+    def _analyze_with_llama(self, topic: str, context_text: str, tone: Optional[str] = None, api_key: Optional[str] = None) -> Tuple[str, Optional[str]]:
         """
         Use LLaMA to determine style and emotion.
         
@@ -341,11 +362,11 @@ class ImageGenerator:
         
         try:
             # Get structured output from LLaMA
-            result = groq_client.parse_structured_output(prompt, {"style": "string", "emotion": "string"})
+            result = groq_client.parse_structured_output(prompt, {"style": "string", "emotion": "string"}, api_key=api_key)
             
             if result.get("success", False) and "data" in result:
                 data = result["data"]
-                style = data.get("style", "photorealistic").lower()
+                style = str(data.get("style", "photorealistic")).lower().strip()
                 emotion = data.get("emotion", None)
                 
                 # Validate the style
@@ -384,14 +405,7 @@ class ImageGenerator:
         # Prioritize tone-based style selection if tone is provided
         if tone:
             # Map narrative tones to appropriate image styles and emotions
-            tone_style_map = {
-                "dramatic": ("cinematic", "intense"),
-                "poetic": ("artistic", "contemplative"),
-                "humorous": ("cartoon", "playful"),
-                "technical": ("digital art", "precise"),
-                "simple": ("minimalist", "calm"),
-                "informative": ("realistic", "neutral")
-            }
+            tone_style_map = TONE_STYLE_MAP
             
             # If tone is in our mapping, use the predefined style and emotion
             if tone.lower() in tone_style_map:

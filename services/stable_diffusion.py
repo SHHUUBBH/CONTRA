@@ -12,6 +12,7 @@ import io
 import textwrap
 import shutil
 import json
+import re
 from typing import Dict, List, Any, Optional
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
@@ -22,6 +23,70 @@ from utils.helpers import sanitize_filename, iso_now
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Maps our art-style names to Stability's v1 `style_preset` values (SDXL 1.0).
+# Styles that are not listed (oil painting, watercolor, ...) are driven by the prompt alone.
+STYLE_PRESETS = {
+    "cartoon": "comic-book",
+    "comic book": "comic-book",
+    "humorous": "comic-book",
+    "anime": "anime",
+    "digital art": "digital-art",
+    "cinematic": "cinematic",
+    "photorealistic": "photographic",
+    "realistic": "photographic",
+    "nature photography": "photographic",
+    "pixel art": "pixel-art",
+    "3d render": "3d-model",
+    "pencil sketch": "line-art",
+    "sketch": "line-art",
+}
+
+# Words that describe each style in the prompt itself. The style goes first in the
+# prompt because earlier tokens carry more weight.
+STYLE_DESCRIPTORS = {
+    "cartoon": "funny cartoon illustration, comic book style, bold ink outlines, flat vibrant colors, cel shading, exaggerated expressions, playful caricature",
+    "comic book": "comic book illustration, bold ink outlines, flat vibrant colors, cel shading, dynamic composition",
+    "photorealistic": "photorealistic photograph, natural lighting, sharp focus, realistic detail",
+    "realistic": "realistic photograph, natural lighting, sharp focus",
+    "nature photography": "nature photography, natural light, sharp focus, rich detail",
+    "cinematic": "cinematic film still, dramatic lighting, shallow depth of field",
+    "anime": "anime illustration, clean line art, vivid colors",
+    "digital art": "polished digital illustration, clean shapes, rich colors",
+    "oil painting": "oil painting on canvas, visible brush strokes, rich texture",
+    "watercolor": "watercolor painting, soft washes, flowing colors",
+    "pencil sketch": "detailed pencil sketch, graphite shading",
+    "pop art": "pop art illustration, bold colors, halftone dots",
+    "abstract art": "abstract art, expressive shapes and color",
+    "scientific illustration": "clean scientific illustration, precise detail, neutral background",
+    "minimalist": "minimalist illustration, simple shapes, limited color palette, plenty of empty space",
+    "artistic": "artistic painterly illustration, expressive brushwork, soft atmospheric light",
+}
+
+# Styles that should look like photographs / film (everything else is illustrated or painted).
+PHOTO_STYLES = {"photorealistic", "realistic", "nature photography", "cinematic"}
+# Illustrated styles that must not drift towards photorealism.
+ILLUSTRATED_STYLES = {"cartoon", "comic book", "anime", "pop art", "digital art", "pixel art"}
+
+# Words that make a diffusion model draw signs/newspapers full of garbled lettering.
+# They are dropped from the (noisy, narrative-derived) context snippet of the prompt.
+_TEXT_WORDS = re.compile(
+    r"\b(?:signs?|signboards?|banners?|placards?|posters?|slogans?|headlines?|newspapers?|"
+    r"billboards?|captions?|labels?|lettering|writing|written|words?|letters?|text)\b",
+    re.IGNORECASE,
+)
+
+# Negative prompt building blocks (duplicates removed from the old hard-coded string).
+BASE_NEGATIVE_PROMPT = (
+    "blurry, low quality, distorted, disfigured, deformed, ugly, poor details, extra limbs, "
+    "malformed hands, extra fingers, fused fingers, mutated hands, bad anatomy, poorly drawn face, "
+    "mutation, extra legs, extra arms, cross-eye, body out of frame, bad art, bad proportions"
+)
+# Diffusion models cannot spell, so any lettering comes out as gibberish: keep it out.
+TEXT_NEGATIVE_PROMPT = (
+    "text, letters, words, writing, typography, captions, subtitles, watermark, signature, logo, "
+    "gibberish text, garbled lettering, signs with text, banners with text, posters with text, speech bubbles"
+)
 
 class StableDiffusionClient:
     """
@@ -53,11 +118,10 @@ class StableDiffusionClient:
         # API endpoint for Stability AI - default to SDXL as it's widely supported
         self.api_url = "https://api.stability.ai/v1/generation/stable-diffusion-xl-1024-v1-0/text-to-image"
         
-        # Check if we should use a different model - make sure the model ID is valid
-        # As of the current API, "stable-diffusion-3-large" is not valid, use SDXL instead
+        # This client only implements the SDXL (v1) endpoint, so a configured SD 3.5
+        # model name is served by SDXL.
         if "3.5" in self.model_version:
-            # For compatibility with future models, log a note
-            logger.info(f"Note: Using SDXL model instead of {self.model_version} as it's not yet available in the API")
+            logger.info(f"Note: this client only implements the SDXL endpoint, so {self.model_version} requests are served by SDXL")
             self.model_version = "stable-diffusion-xl"
         
         # Ensure cache directory exists
@@ -185,8 +249,8 @@ class StableDiffusionClient:
         if params:
             # Add relevant parameters to the hash input
             relevant_params = {
-                k: v for k, v in params.items() 
-                if k in ['width', 'height', 'seed', 'negative_prompt', 'style', 'topic_id']
+                k: v for k, v in params.items()
+                if k in ['width', 'height', 'seed', 'negative_prompt', 'style', 'style_preset', 'topic_id']
             }
             hashable += str(relevant_params)
             
@@ -212,6 +276,38 @@ class StableDiffusionClient:
         
         return cache_path
     
+    @staticmethod
+    def _clean_context(text: str, width: int = 110) -> str:
+        """
+        Turn narrative text into a short, plain context snippet for the image prompt.
+        Markdown, quotes and bullets are stripped: quoted words and bullet text tend to
+        make the model draw signs and captions full of garbled lettering.
+        """
+        if not text:
+            return ""
+        cleaned = str(text)
+        cleaned = re.sub(r"(?m)^\s*(?:[-•*]|\d+[.)])\s+", "", cleaned)  # list markers
+        cleaned = re.sub(r"[\"“”`*#_>~•\[\]\(\)]", " ", cleaned)
+        cleaned = _TEXT_WORDS.sub(" ", cleaned)  # words that make the model draw lettering
+        cleaned = re.sub(r"\s+", " ", cleaned)
+        cleaned = re.sub(r"\s+([.,!?;:])", r"\1", cleaned).strip()
+        if not cleaned:
+            return ""
+        return textwrap.shorten(cleaned, width=width, placeholder="")
+
+    def build_negative_prompt(self, style: Optional[str] = None) -> str:
+        """
+        Build the negative prompt: general quality problems, any lettering (the model can't
+        spell, least of all Devanagari), and the opposite look of the requested style.
+        """
+        style_key = (style or "").lower().strip()
+        parts = [BASE_NEGATIVE_PROMPT, TEXT_NEGATIVE_PROMPT]
+        if style_key in ILLUSTRATED_STYLES:
+            parts.append("photorealistic, photograph, realistic skin, 3d render")
+        elif style_key in PHOTO_STYLES:
+            parts.append("cartoon, illustration, drawing, painting")
+        return ", ".join(parts)
+
     def build_prompt(
         self,
         topic: str,
@@ -230,14 +326,18 @@ class StableDiffusionClient:
             context_text: Additional contextual information
             style: Artistic style (e.g., "oil painting", "watercolor")
             emotion: Emotional tone (e.g., "somber", "triumphant")
-            headlines: List of news headlines for context
+            headlines: Accepted for backward compatibility but NOT added to the prompt
+                (headline text makes the model draw signs and newspapers with garbled lettering)
             tone: Narrative tone (e.g., "informative", "dramatic", "poetic")
             temperature: Creativity level (0.1-1.0, higher = more creative)
             
         Returns:
             Formatted prompt string
         """
-        parts = [f"{topic}, {style}"]
+        style_key = (style or "photorealistic").lower().strip()
+        # Style first (earlier tokens weigh more), described in full so illustrated styles
+        # such as "cartoon" actually look illustrated instead of photographic.
+        parts = [f"{STYLE_DESCRIPTORS.get(style_key, style_key)}, {topic}"]
         
         # Add emotion if provided
         if emotion:
@@ -248,7 +348,7 @@ class StableDiffusionClient:
             tone_enhancements = {
                 "dramatic": "high contrast, dramatic lighting, cinematic composition, evocative",
                 "poetic": "soft lighting, ethereal atmosphere, dreamlike quality, artistic composition",
-                "humorous": "vibrant colors, exaggerated features, playful elements, lighthearted",
+                "humorous": "funny comedic scene, exaggerated features, playful elements, lighthearted, simple clear composition with one or two main characters",
                 "technical": "precise details, clean lines, organized composition, technical accuracy",
                 "simple": "clean background, minimal elements, clear focus, uncluttered",
                 "informative": "clear details, balanced composition, realistic lighting, educational"
@@ -257,15 +357,14 @@ class StableDiffusionClient:
             if tone.lower() in tone_enhancements:
                 parts.append(tone_enhancements[tone.lower()])
         
-        # Add minimal contextual cues from context text
-        if context_text:
-            # Limit context to avoid word salad
-            parts.append(textwrap.shorten(context_text, width=100, placeholder="..."))
-        
-        # Include up to 3 headlines if provided
-        if headlines:
-            for h in headlines[:3]:
-                parts.append(f"headline: {h}")
+        # Add minimal contextual cues from context text (plain words only, kept short
+        # to avoid word salad)
+        context_snippet = self._clean_context(context_text)
+        if context_snippet:
+            parts.append(context_snippet)
+
+        # Headlines are intentionally not added: "headline: ..." makes the model draw
+        # newspapers and signs with garbled lettering.
         
         # Add quality enhancers - updated for SD 3.5
         parts.append("masterpiece, detailed, high resolution, beautiful lighting")
@@ -278,7 +377,7 @@ class StableDiffusionClient:
                 "captivating composition", 
                 "artistic vision", 
                 "stunning",
-                "award-winning photography"
+                "award-winning photography" if style_key in PHOTO_STYLES else "vivid imagination"
             ]
             # Select a subset based on temperature
             num_to_add = min(5, int(2 + (temperature - 0.7) * 10))  # 2-5 elements
@@ -290,32 +389,40 @@ class StableDiffusionClient:
     def generate_image(
         self,
         prompt: str,
-        negative_prompt: str = "blurry, low quality, distorted, disfigured, deformed, ugly, poor details, extra limbs, malformed hands, six fingers, extra fingers, fused fingers, mutated hands, bad anatomy, poorly drawn face, mutation, mutated, extra limbs, extra legs, extra arms, disfigured, deformed, cross-eye, body out of frame, blurry, bad art, bad proportions, gross proportions",
+        negative_prompt: Optional[str] = None,
         width: int = 1024,
         height: int = 576,  # Changed default from 1024 to 576 for 16:9 aspect ratio
         num_variants: int = 1,
         seed: Optional[int] = None,
         overwrite_cache: bool = False,
-        topic_id: Optional[str] = None  # Added topic_id parameter for tracking current topic
+        topic_id: Optional[str] = None,  # Added topic_id parameter for tracking current topic
+        style: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Generate one or more image variants for the given prompt using Stability AI API.
         
         Args:
             prompt: Text prompt for image generation
-            negative_prompt: Text to discourage in the generation
+            negative_prompt: Text to discourage in the generation. When None, a style-aware
+                default is built (quality problems, lettering/gibberish text, opposite style)
             width: Image width in pixels
             height: Image height in pixels
             num_variants: Number of image variants to generate
             seed: Random seed for reproducibility (None for random)
             overwrite_cache: Whether to overwrite cached images
             topic_id: Identifier for the current topic (used for tracking/display)
-            
+            style: Art style name (e.g. "cartoon"); mapped to Stability's style_preset when known
+
         Returns:
             List of dictionaries with image metadata
         """
         results = []
         
+        # Resolve the Stability style preset and the negative prompt for this style
+        style_preset = STYLE_PRESETS.get((style or "").lower().strip())
+        if negative_prompt is None:
+            negative_prompt = self.build_negative_prompt(style)
+
         # Check if API key is available and valid
         if not self.api_key or self.api_key.strip() == "" or len(self.api_key) < 10:
             logger.warning("No valid Stability AI API key provided. Using fallback image.")
@@ -369,6 +476,7 @@ class StableDiffusionClient:
             'height': height,
             'negative_prompt': negative_prompt,
             'seed': seed,
+            'style_preset': style_preset,
             'topic_id': topic_id  # Include topic_id in hash to avoid mixing topics
         }
         prompt_hash = self._hash_prompt(prompt, **param_dict)
@@ -423,6 +531,10 @@ class StableDiffusionClient:
                     "cfg_scale": 7.0,
                     "steps": 30
                 }
+
+                # The preset gives illustrated styles (comic book, anime, ...) a much stronger look
+                if style_preset:
+                    payload["style_preset"] = style_preset
                 
                 # Add negative prompts if provided
                 if negative_prompt:
@@ -442,6 +554,18 @@ class StableDiffusionClient:
                     json=payload,
                     timeout=120  # 2 minute timeout
                 )
+
+                # If the API rejects the request (400), retry once without the style preset
+                # so an unsupported preset can never block image generation.
+                if response.status_code == 400 and "style_preset" in payload:
+                    logger.warning("Stability API returned 400 with style_preset; retrying without it")
+                    payload.pop("style_preset", None)
+                    response = requests.post(
+                        self.api_url,
+                        headers=headers,
+                        json=payload,
+                        timeout=120
+                    )
                 
                 # Check for API error
                 response.raise_for_status()
@@ -485,6 +609,7 @@ class StableDiffusionClient:
                     "timestamp": iso_now(),
                     "model_version": self.model_version,
                     "source": "api",
+                    "style_preset": payload.get("style_preset"),
                     "topic_id": topic_id,  # Store topic ID in metadata
                     "url": f"/images/{cache_file.name}"  # Add direct URL to make it easier to access
                 })
