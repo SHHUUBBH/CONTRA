@@ -27,12 +27,20 @@ DATA_CACHE_DIR = CACHE_DIR / "data"
 IMAGE_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 DATA_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Groq models that have been shut down -> their replacements. A stale GROQ_MODEL
+# env var (e.g. on the hosting dashboard) would otherwise keep every request failing.
+_RETIRED_GROQ_MODELS = {
+    "llama-3.3-70b-versatile": "openai/gpt-oss-120b",
+    "llama-3.1-8b-instant": "openai/gpt-oss-20b",
+}
+
 # API Keys and endpoints
 class APIConfig:
     """API configuration settings"""
     # Groq API (llama-3.3-70b-versatile was shut down by Groq on 2026-08-16)
     GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
+    GROQ_MODEL = _RETIRED_GROQ_MODELS.get(GROQ_MODEL, GROQ_MODEL)
     # Only used by openai/gpt-oss-* reasoning models: low | medium | high
     GROQ_REASONING_EFFORT = os.getenv("GROQ_REASONING_EFFORT", "low")
     
