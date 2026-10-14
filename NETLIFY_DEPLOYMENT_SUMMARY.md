@@ -56,7 +56,7 @@ Copy these to Netlify Dashboard → Site Settings → Environment Variables:
 GROQ_API_KEY=your_groq_api_key_here
 NEWS_API_KEY=your_news_api_key_here
 STABILITY_API_KEY=your_stability_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 ENABLE_CACHE=1
 CACHE_TIMEOUT=3600
 MAX_IMAGE_CACHE_SIZE=100

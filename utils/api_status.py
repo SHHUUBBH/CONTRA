@@ -46,9 +46,11 @@ def check_groq_api(api_key: Optional[str] = None) -> Dict[str, Any]:
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": "ping"}
             ],
-            "max_tokens": 5
+            "max_tokens": 32
         }
-        
+        if str(APIConfig.GROQ_MODEL).startswith("openai/gpt-oss"):
+            payload["reasoning_effort"] = getattr(APIConfig, "GROQ_REASONING_EFFORT", "low") or "low"
+
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",
             headers=headers,

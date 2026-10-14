@@ -2398,23 +2398,33 @@ function setupDynamicFormElements() {
     const advancedOptions = document.getElementById('advanced-options');
     
     if (advancedBtn && advancedOptions) {
+        // Null-safe label setter: updates the .btn-text span when present,
+        // otherwise falls back to the button's own text.
+        const setAdvancedLabel = (btn, text) => {
+            const label = btn.querySelector('.btn-text');
+            if (label) {
+                label.textContent = text;
+            } else {
+                btn.textContent = text;
+            }
+        };
+
         // Ensure proper initialization of text
-        if (advancedOptions.classList.contains('hidden')) {
-            advancedBtn.querySelector('.btn-text').textContent = 'Advanced Options';
-        } else {
-            advancedBtn.querySelector('.btn-text').textContent = 'Hide Advanced Options';
-        }
-        
+        setAdvancedLabel(
+            advancedBtn,
+            advancedOptions.classList.contains('hidden') ? 'Advanced Options' : 'Hide Advanced Options'
+        );
+
         advancedBtn.addEventListener('click', function() {
             // Toggle visibility with proper class toggling
             advancedOptions.classList.toggle('hidden');
-            
+
             // Update button text based on the current state
             const btnText = advancedOptions.classList.contains('hidden')
                 ? 'Advanced Options'
                 : 'Hide Advanced Options';
-            
-            this.querySelector('.btn-text').textContent = btnText;
+
+            setAdvancedLabel(this, btnText);
             
             // Smooth scroll to advanced options when shown
             if (!advancedOptions.classList.contains('hidden')) {
@@ -3217,31 +3227,11 @@ function setupRangeInputs() {
  * Set up advanced options toggle
  */
 function setupAdvancedOptions() {
-    const advancedBtn = document.getElementById('advanced-btn');
-    const advancedOptions = document.getElementById('advanced-options');
-    
-    if (advancedBtn && advancedOptions) {
-        // Initialize button text
-        advancedBtn.textContent = advancedOptions.classList.contains('hidden') 
-            ? 'Advanced Options' 
-            : 'Hide Advanced Options';
-        
-        advancedBtn.addEventListener('click', function() {
-            advancedOptions.classList.toggle('hidden');
-            
-            // Update button text based on the current state
-            this.textContent = advancedOptions.classList.contains('hidden')
-                ? 'Advanced Options'
-                : 'Hide Advanced Options';
-            
-            // Smooth scroll to advanced options when shown
-            if (!advancedOptions.classList.contains('hidden')) {
-                setTimeout(() => {
-                    advancedOptions.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                }, 100);
-            }
-        });
-    }
+    // The toggle (label, click handler, scroll/focus) is wired up in
+    // setupDynamicFormElements(). The old implementation here replaced the
+    // button's innerHTML via textContent (removing its .btn-text span, which
+    // caused a null error there) and also registered a second click handler,
+    // so the panel would toggle twice per click. Intentionally left as a no-op.
 }
 
 /**
@@ -3756,9 +3746,9 @@ function updateApiKeyBanner(isActive, maskedKey, isCustom) {
     if (isActive) {
         banner.className = 'api-key-banner active-key';
         if (indicator) indicator.className = 'key-status-indicator online';
-        if (badgeText) badgeText.textContent = isCustom ? 'Custom Groq LLaMA 3.3 Active' : 'Groq LLaMA 3.3 Online';
+        if (badgeText) badgeText.textContent = isCustom ? 'Custom Groq Key Active' : 'Groq AI Online';
         if (statusMsg) {
-            statusMsg.innerHTML = `Groq LLaMA API Ready <span class="key-masked-tag">${maskedKey || 'gsk_••••'}</span>`;
+            statusMsg.innerHTML = `Groq API Ready <span class="key-masked-tag">${maskedKey || 'gsk_••••'}</span>`;
         }
         if (actions) {
             actions.innerHTML = `
@@ -3779,7 +3769,7 @@ function updateApiKeyBanner(isActive, maskedKey, isCustom) {
     } else {
         banner.className = 'api-key-banner quota-over';
         if (indicator) indicator.className = 'key-status-indicator warning';
-        if (badgeText) badgeText.textContent = 'Groq LLaMA API Key Required';
+        if (badgeText) badgeText.textContent = 'Groq API Key Required';
         if (statusMsg) {
             statusMsg.textContent = 'Project API quota has been reached. Please bring your own Groq key to test.';
         }

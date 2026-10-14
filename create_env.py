@@ -25,7 +25,7 @@ SECRET_KEY=dev_secret_key_replace_in_production
 PORT=5000
 
 # Model Configuration
-GROQ_MODEL=llama-3.3-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 
 # Cache Configuration
 ENABLE_CACHE=1

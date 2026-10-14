@@ -14,7 +14,8 @@ except ImportError:
     # Fallback config if imports fail
     class APIConfig:
         GROQ_API_KEY = os.getenv('GROQ_API_KEY', '')
-        GROQ_MODEL = os.getenv('GROQ_MODEL', 'llama-3.3-70b-versatile')
+        GROQ_MODEL = os.getenv('GROQ_MODEL', 'openai/gpt-oss-120b')
+        GROQ_REASONING_EFFORT = os.getenv('GROQ_REASONING_EFFORT', 'low')
 
 try:
     from utils.cache import disk_cache
@@ -58,7 +59,23 @@ class GroqClient:
         
         if not self.api_key:
             logger.warning("No Groq API key provided. API calls will fail.")
-    
+
+    def _is_reasoning_model(self) -> bool:
+        """openai/gpt-oss-* models spend part of max_tokens on hidden reasoning."""
+        return str(self.model or "").startswith("openai/gpt-oss")
+
+    def _model_extra_params(self) -> Dict[str, Any]:
+        """Extra request params needed by reasoning models (none for classic models)."""
+        if self._is_reasoning_model():
+            effort = getattr(APIConfig, "GROQ_REASONING_EFFORT", "low") or "low"
+            # include_reasoning=False keeps the hidden reasoning out of the response payload
+            return {"reasoning_effort": effort, "include_reasoning": False}
+        return {}
+
+    def _effective_max_tokens(self, max_tokens: int) -> int:
+        """Reasoning tokens count against the limit, so add headroom to keep the answer from being cut off."""
+        return max_tokens + 1024 if self._is_reasoning_model() else max_tokens
+
     def validate_api_key(self, api_key: str) -> Tuple[bool, str]:
         """
         Validate a Groq API key by checking models or running a minimal query.
@@ -80,8 +97,9 @@ class GroqClient:
             payload = {
                 "model": self.model,
                 "messages": [{"role": "user", "content": "ping"}],
-                "max_tokens": 2
+                "max_tokens": 32
             }
+            payload.update(self._model_extra_params())
             res = requests.post(self.api_url, headers=headers, json=payload, timeout=12)
             if res.status_code == 200:
                 return True, f"API key is valid and working with LLaMA ({self.model})!"
@@ -150,11 +168,12 @@ class GroqClient:
                 {"role": "system", "content": "You are a helpful, accurate, and creative assistant."},
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": max_tokens,
+            "max_tokens": self._effective_max_tokens(max_tokens),
             "temperature": temperature,
             "top_p": top_p
         }
-        
+        payload.update(self._model_extra_params())
+
         if stop:
             payload["stop"] = stop
         
@@ -173,8 +192,21 @@ class GroqClient:
             
             # Extract the generated text
             if 'choices' in data and len(data['choices']) > 0:
-                text = data['choices'][0]['message']['content'].strip()
-                
+                message = data['choices'][0].get('message') or {}
+                text = (message.get('content') or '').strip()
+
+                if not text:
+                    # Reasoning models can spend the whole token budget on reasoning
+                    # and return empty content; fail clearly instead of crashing.
+                    finish_reason = data['choices'][0].get('finish_reason')
+                    logger.error(f"Groq returned empty content (finish_reason={finish_reason})")
+                    return {
+                        "success": False,
+                        "error": "The AI model returned an empty response. Please try again.",
+                        "text": "",
+                        "raw_response": data
+                    }
+
                 return {
                     "success": True,
                     "text": text,
